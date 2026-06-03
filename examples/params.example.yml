@@ -1,0 +1,32 @@
+input: metadata.tsv
+outdir: results/project
+
+remove_host: true
+host_fasta: /path/to/default_host.fa
+
+run_kraken2: true
+kraken2_db: /path/to/kraken2_db
+kraken2_extra_args: ""
+
+run_bracken: true
+bracken_db: /path/to/kraken2_db
+bracken_rank: G
+bracken_read_len: 100
+bracken_threshold: 10
+bracken_extra_args: ""
+
+taxon_filter: prokaryote
+taxdump: /path/to/taxdump
+drop_taxids: "0,1"
+
+run_sourcetracker2: true
+sourcetracker2_source_rarefaction_depth: 1000
+sourcetracker2_sink_rarefaction_depth: 1000
+sourcetracker2_extra_args: ""
+
+min_length_modern: 50
+min_length_ancient: 30
+fastp_extra_args: ""
+adapterremoval_extra_args: ""
+
+multiqc_title: mstflow project

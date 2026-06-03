@@ -1,0 +1,100 @@
+# Nextflow runtime state
+.nextflow/
+.nextflow*
+.nextflow.log*
+work/
+
+# Pipeline outputs and scratch space
+results/
+logs/
+tmp/
+scratch/
+publish/
+report.html
+timeline.html
+trace.txt
+dag.*
+
+# Local data, references, and databases
+data/
+refs/
+db/
+databases/
+kraken2*/
+bracken*/
+taxdump/
+*.k2d
+hash.k2d
+opts.k2d
+taxo.k2d
+database*.idx
+
+# Generated tiny test data
+examples/test_data/
+examples/metadata.tiny.tsv
+
+# Sequencing files
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.fasta
+*.fasta.gz
+*.fa
+*.fa.gz
+*.fna
+*.fna.gz
+
+# Alignment and reference indices
+*.bam
+*.bai
+*.cram
+*.crai
+*.sam
+*.sai
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+*.fai
+*.gzi
+
+# Taxonomy/profiling large intermediates
+*.biom
+*.rma6
+*.kraken
+*.kraken2
+*.kreport
+*.bracken
+*.bracken.tsv
+
+# Conda/mamba local environments
+.conda/
+.mamba/
+conda-env/
+env/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Archives and downloaded bundles
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.gz
+*.bz2
+*.xz
+*.aria2
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

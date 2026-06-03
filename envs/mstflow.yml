@@ -1,0 +1,16 @@
+name: mstflow
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.10
+  - fastqc
+  - multiqc
+  - fastp
+  - adapterremoval
+  - bwa
+  - samtools
+  - kraken2
+  - bracken
+  - biom-format
+  - matplotlib

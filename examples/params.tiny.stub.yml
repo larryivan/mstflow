@@ -1,0 +1,23 @@
+input: examples/metadata.tiny.tsv
+outdir: results/tiny_stub
+
+remove_host: true
+host_fasta: examples/test_data/refs/chm13_tiny.fa
+
+run_kraken2: true
+kraken2_db: examples/test_data/kraken2_stub_db
+
+run_bracken: true
+bracken_db: examples/test_data/kraken2_stub_db
+bracken_rank: G
+bracken_read_len: 100
+bracken_threshold: 1
+
+taxon_filter: none
+drop_taxids: "0,1"
+
+run_sourcetracker2: true
+sourcetracker2_source_rarefaction_depth: 0
+sourcetracker2_sink_rarefaction_depth: 0
+
+multiqc_title: mstflow tiny stub
