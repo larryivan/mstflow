@@ -5,38 +5,62 @@ process BRACKEN_PROFILE {
     publishDir "${params.outdir}/bracken", mode: 'copy'
 
     input:
-    tuple val(meta), path(report)
+    tuple val(meta), path(report), path(read_length_stats), path(bracken_db)
+    path fragment_helper
 
     output:
-    tuple val(meta), path("*.bracken.tsv"), path("*.bracken.report.txt"), emit: tables
-    path "versions.yml", emit: versions
+    tuple val(meta), path("*.bracken.tsv"), path("*.bracken.report.txt"), path("*.bracken.read_length_selection.tsv"), emit: tables
+    path "*.bracken.versions.yml", emit: versions
 
     script:
     def id = meta.id
     def extraArgs = params.bracken_extra_args ?: ''
+    def sampleReadLength = meta.bracken_read_len
+    def hasSampleReadLength = sampleReadLength && !(sampleReadLength.toString().toUpperCase() in ['NA', 'N/A', 'AUTO'])
+    def requestedReadLength = hasSampleReadLength ? sampleReadLength : (params.bracken_read_len ?: 'auto')
     """
-    bracken \\
-        -d ${file(params.bracken_db)} \\
-        -i ${report} \\
-        -o ${id}.bracken.tsv \\
-        -w ${id}.bracken.report.txt \\
-        -r ${params.bracken_read_len} \\
-        -l ${params.bracken_rank} \\
-        -t ${params.bracken_threshold} \\
-        ${extraArgs}
+    selected_read_length=\$(python3 "${fragment_helper}" select-bracken-length \
+        --stats "${read_length_stats}" \
+        --database "${bracken_db}" \
+        --requested "${requestedReadLength}" \
+        --sample-id "${id}" \
+        --output "${id}.bracken.read_length_selection.tsv")
 
-    printf '"${task.process}":\\n    bracken: "%s"\\n' "\$(bracken -v 2>&1 | head -n 1 | sed 's/^.*Bracken version //')" > versions.yml
+    bracken \
+        ${extraArgs} \
+        -d "${bracken_db}" \
+        -i "${report}" \
+        -o "${id}.bracken.tsv" \
+        -w "${id}.bracken.report.txt" \
+        -r "\$selected_read_length" \
+        -l "${params.bracken_rank}" \
+        -t "${params.bracken_threshold}"
+
+    # Bracken does not consistently implement -v/--version across releases.
+    # Parse the help banner without allowing its non-zero help exit to fail a task.
+    version=\$(bracken -h 2>&1 \
+        | sed -nE 's/.*[Bb]racken[^0-9]*([0-9]+(\\.[0-9]+){1,2}).*/\\1/p' \
+        | head -n 1 || true)
+    [[ -n "\$version" ]] || version="unknown"
+    printf '"${task.process}":\n    bracken: "%s"\n' "\$version" > "${id}.bracken.versions.yml"
     """
 
     stub:
     def id = meta.id
+    def sampleReadLength = meta.bracken_read_len
+    def hasSampleReadLength = sampleReadLength && !(sampleReadLength.toString().toUpperCase() in ['NA', 'N/A', 'AUTO'])
+    def requestedReadLength = hasSampleReadLength ? sampleReadLength : (params.bracken_read_len ?: 'auto')
     """
-    cat > ${id}.bracken.tsv <<-EOF
-    name	taxonomy_id	taxonomy_lvl	kraken_assigned_reads	added_reads	new_est_reads	fraction_total_reads
-    Bacteroides	816	G	80	20	100	0.6667
-    Pseudomonas	286	G	40	10	50	0.3333
-    EOF
+    python3 "${fragment_helper}" select-bracken-length \
+        --stats "${read_length_stats}" \
+        --database "${bracken_db}" \
+        --requested "${requestedReadLength}" \
+        --sample-id "${id}" \
+        --output "${id}.bracken.read_length_selection.tsv" \
+        > /dev/null
+    printf 'name\ttaxonomy_id\ttaxonomy_lvl\tkraken_assigned_reads\tadded_reads\tnew_est_reads\tfraction_total_reads\nBacteroides\t816\tG\t1\t0\t1\t1.0\n' \
+        > ${id}.bracken.tsv
     cp ${id}.bracken.tsv ${id}.bracken.report.txt
-    printf '"${task.process}":\\n    stub: "true"\\n' > versions.yml
+    printf '"${task.process}":\n    stub: "true"\n' > ${id}.bracken.versions.yml
     """
 }

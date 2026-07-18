@@ -10,122 +10,584 @@ include { PREPROCESS_ADAPTERREMOVAL } from './modules/preprocess_adapterremoval'
 include { HOST_REMOVE_BWA } from './modules/host_remove_bwa'
 include { KRAKEN2_PROFILE } from './modules/kraken2'
 include { BRACKEN_PROFILE } from './modules/bracken'
-include { BUILD_FEATURE_TABLE } from './modules/build_feature_table'
+include { BUILD_FEATURE_TABLE_WITH_KRAKEN_QC } from './modules/build_feature_table'
 include { PREPARE_SOURCETRACKER2_INPUTS } from './modules/prepare_sourcetracker2'
 include { MAKE_BIOM } from './modules/make_biom'
 include { SOURCETRACKER2_GIBBS } from './modules/sourcetracker2'
-include { PLOT_SOURCETRACKER2 } from './modules/plot_sourcetracker2'
+include { PLOT_SOURCETRACKER2_WITH_UNCERTAINTY } from './modules/plot_sourcetracker2'
 include { MULTIQC_REPORT } from './modules/multiqc'
 
-def asBool(value) {
-    if (value == null) {
-        return false
-    }
+
+def asBool(name, value) {
     if (value instanceof Boolean) {
         return value
     }
-    return value.toString().toLowerCase() in ['true', '1', 'yes', 'y']
+    def normalized = value == null ? '' : value.toString().trim().toLowerCase()
+    if (normalized in ['true', '1', 'yes', 'y']) {
+        return true
+    }
+    if (normalized in ['false', '0', 'no', 'n']) {
+        return false
+    }
+    throw new IllegalArgumentException(
+        "Parameter '${name}' must be a boolean (true/false, yes/no, or 1/0); received '${value}'"
+    )
 }
+
+
+def asInteger(name, value, minimum = null, maximum = null) {
+    def text = value == null ? '' : value.toString().trim()
+    if (!(text ==~ /^[+-]?\d+$/)) {
+        throw new IllegalArgumentException("Parameter '${name}' must be an integer; received '${value}'")
+    }
+    int parsed
+    try {
+        parsed = Integer.parseInt(text)
+    } catch (Exception _ignored) {
+        throw new IllegalArgumentException("Parameter '${name}' must be an integer; received '${value}'")
+    }
+    if (minimum != null && parsed < minimum) {
+        throw new IllegalArgumentException("Parameter '${name}' must be >= ${minimum}; received '${parsed}'")
+    }
+    if (maximum != null && parsed > maximum) {
+        throw new IllegalArgumentException("Parameter '${name}' must be <= ${maximum}; received '${parsed}'")
+    }
+    return parsed
+}
+
+
+def asNumber(name, value, minimum = null, maximum = null) {
+    double parsed
+    try {
+        parsed = value as Double
+    } catch (Exception _ignored) {
+        throw new IllegalArgumentException("Parameter '${name}' must be numeric; received '${value}'")
+    }
+    if (!Double.isFinite(parsed)) {
+        throw new IllegalArgumentException("Parameter '${name}' must be finite; received '${value}'")
+    }
+    if (minimum != null && parsed < minimum) {
+        throw new IllegalArgumentException("Parameter '${name}' must be >= ${minimum}; received '${parsed}'")
+    }
+    if (maximum != null && parsed > maximum) {
+        throw new IllegalArgumentException("Parameter '${name}' must be <= ${maximum}; received '${parsed}'")
+    }
+    return parsed
+}
+
+
+def requireChoice(name, value, allowed, lowerCase = true) {
+    def normalized = value == null ? '' : value.toString().trim()
+    normalized = lowerCase ? normalized.toLowerCase() : normalized.toUpperCase()
+    if (!(normalized in allowed)) {
+        throw new IllegalArgumentException(
+            "Parameter '${name}' must be one of ${allowed.join(', ')}; received '${value}'"
+        )
+    }
+    return normalized
+}
+
+
+def requireSingleQuotedSafe(name, value) {
+    def text = value == null ? '' : value.toString()
+    if (text.contains("'") || text.contains('\n') || text.contains('\r') || text.indexOf(0) >= 0) {
+        throw new IllegalArgumentException(
+            "Parameter '${name}' must not contain single quotes, newlines, carriage returns, or NUL bytes"
+        )
+    }
+    return text
+}
+
+
+def rejectReservedArgs(name, value, reservedFlags) {
+    def text = value == null ? '' : value.toString()
+    reservedFlags.each { flag ->
+        def isShortOption = flag ==~ /^-[^-]$/
+        def optionEnd = isShortOption ? '' : '(?==|[\\s\\x27\\x22;|&]|$)'
+        def pattern = java.util.regex.Pattern.compile(
+            '(^|[\\s\\x27\\x22;|&])' + java.util.regex.Pattern.quote(flag) +
+                optionEnd
+        )
+        if (pattern.matcher(text).find()) {
+            throw new IllegalArgumentException(
+                "Parameter '${name}' must not override workflow-controlled option '${flag}'"
+            )
+        }
+    }
+}
+
 
 def readListFromRow(row) {
     def fastq1 = row.fastq_1.toString()
     def fastq2 = row.fastq_2.toString()
     if (fastq2 == 'NA' || fastq2 == '') {
-        return [file(fastq1)]
+        return [file(fastq1, checkIfExists: true)]
     }
-    return [file(fastq1), file(fastq2)]
+    return [file(fastq1, checkIfExists: true), file(fastq2, checkIfExists: true)]
 }
+
 
 def metaFromRow(row) {
-    return [
-        id             : row.sample_id.toString(),
-        layout         : row.layout.toString(),
-        age_group      : row.age_group.toString(),
-        preprocess_mode: row.preprocess_mode.toString(),
-        host_ref       : row.host_ref.toString()
-    ]
+    def meta = row.collectEntries { key, value ->
+        [(key.toString()): value == null ? '' : value.toString()]
+    }
+    meta.id = meta.sample_id
+    meta.layout = meta.layout.toUpperCase()
+    meta.age_group = meta.age_group.toLowerCase()
+    return meta
 }
 
+
+def requireDirectory(name, value, requiredFiles = []) {
+    if (!value) {
+        throw new IllegalArgumentException("Parameter '${name}' is required")
+    }
+    def directory = file(value, checkIfExists: true)
+    if (!java.nio.file.Files.isDirectory(directory)) {
+        throw new IllegalArgumentException("Parameter '${name}' must be a directory: ${directory}")
+    }
+    requiredFiles.each { filename ->
+        def required = directory.resolve(filename)
+        if (!java.nio.file.Files.isRegularFile(required)) {
+            throw new IllegalArgumentException("${name} is missing required file: ${required}")
+        }
+    }
+    return directory
+}
+
+
+def requireBrackenDistributions(directory) {
+    def matches = java.nio.file.Files.newDirectoryStream(directory, 'database*mers.kmer_distrib')
+    def foundDistribution = matches.iterator().hasNext()
+    matches.close()
+    if (!foundDistribution) {
+        throw new IllegalArgumentException(
+            "bracken_db contains no database<N>mers.kmer_distrib files: ${directory}"
+        )
+    }
+}
+
+
+def resolveTaxdumpNodes(value) {
+    if (!value) {
+        throw new IllegalArgumentException("Parameter 'taxdump' is required for taxon_filter=prokaryote")
+    }
+    def candidate = file(value, checkIfExists: true)
+    def nodes = java.nio.file.Files.isDirectory(candidate) ? candidate.resolve('nodes.dmp') : candidate
+    if (!java.nio.file.Files.isRegularFile(nodes)) {
+        throw new IllegalArgumentException("taxdump nodes.dmp does not exist: ${nodes}")
+    }
+    return nodes
+}
+
+
+def hostReferenceFor(meta, defaultReference) {
+    def requested = (meta.host_ref ?: '').toString().trim()
+    if (requested in ['', 'NA', 'N/A', 'default']) {
+        if (!defaultReference) {
+            throw new IllegalArgumentException(
+                "Sample '${meta.id}' uses host_ref=default but parameter 'host_fasta' is not set"
+            )
+        }
+        return defaultReference.toString()
+    }
+    return requested
+}
+
+
+def hostBundleFor(reference) {
+    def fasta = file(reference, checkIfExists: true)
+    if (!java.nio.file.Files.isRegularFile(fasta)) {
+        throw new IllegalArgumentException("Host FASTA is not a regular file: ${fasta}")
+    }
+    def bundle = [fasta]
+    ['.amb', '.ann', '.bwt', '.pac', '.sa'].each { suffix ->
+        def index = file("${fasta}${suffix}", checkIfExists: true)
+        if (!java.nio.file.Files.isRegularFile(index)) {
+            throw new IllegalArgumentException("Host FASTA is missing BWA index: ${index}")
+        }
+        bundle << index
+    }
+    def fai = file("${fasta}.fai")
+    if (java.nio.file.Files.isRegularFile(fai)) {
+        bundle << fai
+    }
+    return bundle
+}
+
+
+// Normalize every workflow-controlled parameter once, before process closures
+// read it. This keeps command-line strings (for example "yes" or "0") from
+// being interpreted differently in the workflow and in individual modules.
+params.remove_host = asBool('remove_host', params.remove_host)
+params.run_kraken2 = asBool('run_kraken2', params.run_kraken2)
+params.run_bracken = asBool('run_bracken', params.run_bracken)
+params.run_sourcetracker2 = asBool('run_sourcetracker2', params.run_sourcetracker2)
+params.publish_intermediates = asBool('publish_intermediates', params.publish_intermediates)
+params.kraken2_save_read_classifications = asBool(
+    'kraken2_save_read_classifications', params.kraken2_save_read_classifications
+)
+params.kraken2_use_names = asBool('kraken2_use_names', params.kraken2_use_names)
+params.kraken2_report_minimizer_data = asBool(
+    'kraken2_report_minimizer_data', params.kraken2_report_minimizer_data
+)
+params.sourcetracker2_loo = asBool('sourcetracker2_loo', params.sourcetracker2_loo)
+params.require_explicit_host_for_nondefault = asBool(
+    'require_explicit_host_for_nondefault', params.require_explicit_host_for_nondefault
+)
+
+params.ancient_pe_mode = requireChoice(
+    'ancient_pe_mode', params.ancient_pe_mode, ['collapsed_only', 'all_fragments']
+)
+params.taxon_filter = requireChoice('taxon_filter', params.taxon_filter, ['none', 'prokaryote'])
+params.bracken_rank = requireChoice(
+    'bracken_rank', params.bracken_rank, ['D', 'P', 'C', 'O', 'F', 'G', 'S'], false
+)
+params.sourcetracker2_aggregate_by = requireChoice(
+    'sourcetracker2_aggregate_by', params.sourcetracker2_aggregate_by, ['sample_id', 'unit_id']
+)
+params.sourcetracker2_taxon_scope = requireChoice(
+    'sourcetracker2_taxon_scope', params.sourcetracker2_taxon_scope, ['filtered', 'all']
+)
+
+params.kraken2_kmer_len = asInteger('kraken2_kmer_len', params.kraken2_kmer_len, 1)
+params.min_length_ancient = asInteger(
+    'min_length_ancient', params.min_length_ancient, params.kraken2_kmer_len
+)
+params.min_length_modern = asInteger(
+    'min_length_modern', params.min_length_modern, params.kraken2_kmer_len
+)
+params.kraken2_min_read_len = asInteger(
+    'kraken2_min_read_len', params.kraken2_min_read_len, params.kraken2_kmer_len
+)
+params.fragment_pair_gap = asInteger(
+    'fragment_pair_gap', params.fragment_pair_gap, params.kraken2_kmer_len
+)
+params.host_min_mapq = asInteger('host_min_mapq', params.host_min_mapq, 0)
+params.host_remove_max_forks = asInteger('host_remove_max_forks', params.host_remove_max_forks, 1)
+params.kraken2_max_forks = asInteger('kraken2_max_forks', params.kraken2_max_forks, 1)
+params.kraken2_cpus = asInteger('kraken2_cpus', params.kraken2_cpus, 1)
+params.kraken2_confidence = asNumber('kraken2_confidence', params.kraken2_confidence, 0.0, 1.0)
+params.kraken2_minimum_hit_groups = asInteger(
+    'kraken2_minimum_hit_groups', params.kraken2_minimum_hit_groups, 1
+)
+params.bracken_threshold = asInteger('bracken_threshold', params.bracken_threshold, 0)
+params.sourcetracker2_source_rarefaction_depth = asInteger(
+    'sourcetracker2_source_rarefaction_depth', params.sourcetracker2_source_rarefaction_depth, 0
+)
+params.sourcetracker2_sink_rarefaction_depth = asInteger(
+    'sourcetracker2_sink_rarefaction_depth', params.sourcetracker2_sink_rarefaction_depth, 0
+)
+params.sourcetracker2_seed = asInteger(
+    'sourcetracker2_seed', params.sourcetracker2_seed, 0, 2_147_483_647
+)
+params.sourcetracker2_min_kraken_classified_fraction = asNumber(
+    'sourcetracker2_min_kraken_classified_fraction',
+    params.sourcetracker2_min_kraken_classified_fraction,
+    0.0,
+    1.0
+)
+params.sourcetracker2_min_taxon_filter_retained_reads = asInteger(
+    'sourcetracker2_min_taxon_filter_retained_reads',
+    params.sourcetracker2_min_taxon_filter_retained_reads,
+    0
+)
+params.sourcetracker2_min_taxon_filter_retained_fraction = asNumber(
+    'sourcetracker2_min_taxon_filter_retained_fraction',
+    params.sourcetracker2_min_taxon_filter_retained_fraction,
+    0.0,
+    1.0
+)
+params.sourcetracker2_max_unknown_prop = asNumber(
+    'sourcetracker2_max_unknown_prop', params.sourcetracker2_max_unknown_prop, 0.0, 1.0
+)
+params.sourcetracker2_min_top_known_prop = asNumber(
+    'sourcetracker2_min_top_known_prop', params.sourcetracker2_min_top_known_prop, 0.0, 1.0
+)
+params.sourcetracker2_min_top_known_margin = asNumber(
+    'sourcetracker2_min_top_known_margin', params.sourcetracker2_min_top_known_margin, 0.0, 1.0
+)
+
+params.bracken_read_len = params.bracken_read_len.toString().trim().toLowerCase() in ['auto', 'per_sample'] \
+    ? 'auto' \
+    : asInteger('bracken_read_len', params.bracken_read_len, 1)
+
+params.multiqc_title = requireSingleQuotedSafe('multiqc_title', params.multiqc_title)
+params.default_host_group = requireSingleQuotedSafe('default_host_group', params.default_host_group)
+params.host_fasta = requireSingleQuotedSafe('host_fasta', params.host_fasta)
+params.drop_taxids = requireSingleQuotedSafe('drop_taxids', params.drop_taxids)
+params.sourcetracker2_include_panel_roles = requireSingleQuotedSafe(
+    'sourcetracker2_include_panel_roles', params.sourcetracker2_include_panel_roles
+)
+params.sourcetracker2_exclude_panel_roles = requireSingleQuotedSafe(
+    'sourcetracker2_exclude_panel_roles', params.sourcetracker2_exclude_panel_roles
+)
+params.sourcetracker2_exclude_source_envs = requireSingleQuotedSafe(
+    'sourcetracker2_exclude_source_envs', params.sourcetracker2_exclude_source_envs
+)
+params.sourcetracker2_exclude_source_classes = requireSingleQuotedSafe(
+    'sourcetracker2_exclude_source_classes', params.sourcetracker2_exclude_source_classes
+)
+
+
 workflow {
-    if (asBool(params.run_bracken) && !asBool(params.run_kraken2)) {
+    def removeHost = params.remove_host
+    def runKraken2 = params.run_kraken2
+    def runBracken = params.run_bracken
+    def runSourceTracker2 = params.run_sourcetracker2
+    if (!(params.sourcetracker2_analysis_label ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
+        error "Parameter 'sourcetracker2_analysis_label' must be filesystem-safe"
+    }
+
+    rejectReservedArgs(
+        'kraken2_extra_args',
+        params.kraken2_extra_args,
+        [
+            '--db', '--threads', '--paired', '--report', '--output', '--confidence',
+            '--minimum-hit-groups', '--use-names', '--report-minimizer-data',
+            '--use-mpa-style', '--bzip2-compressed', '--check-names'
+        ]
+    )
+    rejectReservedArgs(
+        'fastp_extra_args',
+        params.fastp_extra_args,
+        [
+            '-i', '--in1', '-I', '--in2', '-o', '--out1', '-O', '--out2',
+            '--detect_adapter_for_pe', '--cut_front', '--cut_tail', '--cut_window_size',
+            '--cut_mean_quality', '-l', '--length_required', '-w', '--thread',
+            '-h', '--html', '-j', '--json'
+        ]
+    )
+    rejectReservedArgs(
+        'adapterremoval_extra_args',
+        params.adapterremoval_extra_args,
+        [
+            '--file1', '--file2', '--basename', '--threads', '--trimns',
+            '--trimqualities', '--minquality', '--minlength', '--gzip', '--collapse',
+            '--collapse-deterministic', '--collapse-conservatively', '--seed',
+            '--output1', '--output2', '--outputcollapsed', '--outputcollapsedtruncated',
+            '--outputsingleton', '--outputsingletontruncated', '--outputdiscarded',
+            '--singleton', '--discarded', '--settings', '--combined-output', '--interleaved',
+            '--interleaved-input', '--interleaved-output', '--demultiplex-only', '--bzip2'
+        ]
+    )
+    rejectReservedArgs(
+        'bracken_extra_args',
+        params.bracken_extra_args,
+        ['-d', '-i', '-o', '-w', '-r', '-l', '-t']
+    )
+    rejectReservedArgs(
+        'sourcetracker2_extra_args',
+        params.sourcetracker2_extra_args,
+        [
+            '-i', '-m', '-o', '--loo', '--jobs', '--source_rarefaction_depth',
+            '--sink_rarefaction_depth', '--source_sink_column', '--source_category_column',
+            '--source_column_value', '--sink_column_value', '--seed'
+        ]
+    )
+
+    if (runBracken && !runKraken2) {
         error 'run_bracken requires run_kraken2'
     }
-    if (asBool(params.run_sourcetracker2) && !asBool(params.run_bracken)) {
+    if (runSourceTracker2 && !runBracken) {
         error 'run_sourcetracker2 requires run_bracken'
     }
+    if (
+        runSourceTracker2 &&
+        params.sourcetracker2_loo &&
+        params.sourcetracker2_source_rarefaction_depth != 0
+    ) {
+        error 'SourceTracker2 2.0.1 LOO requires sourcetracker2_source_rarefaction_depth=0; its CLI subtracts unrarefied held-out counts from already-rarefied source counts'
+    }
+    if (!params.input) {
+        error 'The input parameter is required and must identify exactly one metadata TSV file'
+    }
 
-    input_ch = Channel.fromPath(params.input, checkIfExists: true)
+    def krakenDbPath = null
+    def brackenDbPath = null
+    if (runKraken2) {
+        krakenDbPath = requireDirectory(
+            'kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d']
+        )
+    }
+    if (runBracken) {
+        brackenDbPath = requireDirectory(
+            'bracken_db', params.bracken_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d']
+        )
+        requireBrackenDistributions(brackenDbPath)
+        if (krakenDbPath.toRealPath() != brackenDbPath.toRealPath()) {
+            error 'kraken2_db and bracken_db must resolve to the same database snapshot'
+        }
+    }
 
-    VALIDATE_METADATA(input_ch)
+    def noTaxdumpSentinel = file("${projectDir}/assets/no_taxdump.nodes.dmp", checkIfExists: true)
+    def taxdumpNodesPath = (runBracken && params.taxon_filter == 'prokaryote') \
+        ? resolveTaxdumpNodes(params.taxdump) \
+        : noTaxdumpSentinel
+
+    def validatorScript = file("${projectDir}/bin/validate_metadata.py", checkIfExists: true)
+    def fragmentHelper = file("${projectDir}/bin/mstflow_fragment_tools.py", checkIfExists: true)
+    def buildFeatureTableScript = file("${projectDir}/bin/build_feature_table.py", checkIfExists: true)
+    def prepareSourceTrackerScript = file(
+        "${projectDir}/bin/prepare_sourcetracker2_inputs.py", checkIfExists: true
+    )
+    def sourceTrackerRunner = file(
+        "${projectDir}/bin/run_sourcetracker2_seeded.py", checkIfExists: true
+    )
+    def plotSourceTrackerScript = file("${projectDir}/bin/plot_sourcetracker2.py", checkIfExists: true)
+
+    validator_script_ch = channel.value(validatorScript)
+    fragment_helper_ch = channel.value(fragmentHelper)
+    build_feature_table_script_ch = channel.value(buildFeatureTableScript)
+    prepare_sourcetracker2_script_ch = channel.value(prepareSourceTrackerScript)
+    sourcetracker2_runner_ch = channel.value(sourceTrackerRunner)
+    plot_sourcetracker2_script_ch = channel.value(plotSourceTrackerScript)
+    taxdump_nodes_ch = channel.value(taxdumpNodesPath)
+
+    input_ch = channel.fromPath(params.input, checkIfExists: true)
+        .collect()
+        .map { matches ->
+            if (matches.size() != 1) {
+                error "The input parameter must identify exactly one metadata TSV file; matched ${matches.size()} files"
+            }
+            matches.first()
+        }
+
+    VALIDATE_METADATA(input_ch, validator_script_ch)
 
     samples_ch = VALIDATE_METADATA.out.metadata
         .splitCsv(header: true, sep: '\t')
         .map { row -> tuple(metaFromRow(row), readListFromRow(row)) }
 
     sample_views = samples_ch.multiMap { meta, reads ->
+        def hostBundle = removeHost ? hostBundleFor(hostReferenceFor(meta, params.host_fasta)) : []
         raw: tuple(meta, reads)
         preprocess: tuple(meta, reads)
+        host: tuple(meta.id, hostBundle)
     }
 
-    FASTQC_RAW(sample_views.raw)
+    raw_qc_ch = sample_views.raw.map { meta, reads ->
+        tuple(meta + [qc_stage: 'raw'], reads)
+    }
+    FASTQC_RAW(raw_qc_ch)
 
-    preprocess_ch = sample_views.preprocess.branch { meta, reads ->
+    preprocess_ch = sample_views.preprocess.branch { meta, _reads ->
         fastp: meta.preprocess_mode.startsWith('fastp')
         adapterremoval: meta.preprocess_mode.startsWith('adapterremoval')
     }
 
     PREPROCESS_FASTP(preprocess_ch.fastp)
-    PREPROCESS_ADAPTERREMOVAL(preprocess_ch.adapterremoval)
+    PREPROCESS_ADAPTERREMOVAL(preprocess_ch.adapterremoval, fragment_helper_ch)
 
     prehost_ch = PREPROCESS_FASTP.out.reads.mix(PREPROCESS_ADAPTERREMOVAL.out.reads)
 
-    if (asBool(params.remove_host)) {
-        HOST_REMOVE_BWA(prehost_ch)
+    if (removeHost) {
+        host_input_ch = prehost_ch
+            .map { meta, reads -> tuple(meta.id, meta, reads) }
+            .join(sample_views.host)
+            .map { _id, meta, reads, hostBundle -> tuple(meta, reads, hostBundle) }
+        HOST_REMOVE_BWA(host_input_ch, fragment_helper_ch)
         clean_ch = HOST_REMOVE_BWA.out.reads
-        host_qc_ch = HOST_REMOVE_BWA.out.logs
+        host_qc_ch = HOST_REMOVE_BWA.out.logs.mix(HOST_REMOVE_BWA.out.qc)
     } else {
         clean_ch = prehost_ch
-        host_qc_ch = Channel.empty()
+        host_qc_ch = channel.empty()
     }
 
-    FASTQC_CLEAN(clean_ch)
+    clean_qc_ch = clean_ch.map { meta, reads ->
+        tuple(meta + [qc_stage: 'clean'], reads)
+    }
+    FASTQC_CLEAN(clean_qc_ch)
 
-    if (asBool(params.run_kraken2)) {
-        KRAKEN2_PROFILE(clean_ch)
-        kraken_qc_ch = KRAKEN2_PROFILE.out.reports.map { meta, report, output -> [report, output] }.flatten()
+    if (runKraken2) {
+        kraken_input_ch = clean_ch.map { meta, reads -> tuple(meta, reads, krakenDbPath) }
+        KRAKEN2_PROFILE(kraken_input_ch, fragment_helper_ch)
+        kraken_qc_ch = KRAKEN2_PROFILE.out.reports
+            .map { _meta, report, readLength -> [report, readLength] }
+            .flatten()
+            .mix(KRAKEN2_PROFILE.out.qc)
+            .mix(KRAKEN2_PROFILE.out.minimizer_reports)
     } else {
-        kraken_qc_ch = Channel.empty()
+        kraken_qc_ch = channel.empty()
     }
 
-    if (asBool(params.run_bracken)) {
-        BRACKEN_PROFILE(KRAKEN2_PROFILE.out.reports.map { meta, report, output -> tuple(meta, report) })
-        bracken_files_ch = BRACKEN_PROFILE.out.tables.map { meta, bracken, report -> bracken }.collect()
-        BUILD_FEATURE_TABLE(VALIDATE_METADATA.out.metadata, bracken_files_ch)
-        bracken_qc_ch = BRACKEN_PROFILE.out.tables.map { meta, bracken, report -> report }
+    if (runBracken) {
+        bracken_input_ch = KRAKEN2_PROFILE.out.reports.map { meta, report, readLength ->
+            tuple(meta, report, readLength, brackenDbPath)
+        }
+        BRACKEN_PROFILE(bracken_input_ch, fragment_helper_ch)
 
-        if (asBool(params.run_sourcetracker2)) {
-            PREPARE_SOURCETRACKER2_INPUTS(BUILD_FEATURE_TABLE.out.counts, VALIDATE_METADATA.out.metadata)
+        bracken_files_ch = BRACKEN_PROFILE.out.tables
+            .map { _meta, bracken, _report, _selection -> bracken }
+            .collect()
+        kraken_reports_ch = KRAKEN2_PROFILE.out.reports
+            .map { _meta, report, _readLength -> report }
+            .collect()
+
+        BUILD_FEATURE_TABLE_WITH_KRAKEN_QC(
+            VALIDATE_METADATA.out.metadata,
+            bracken_files_ch,
+            kraken_reports_ch,
+            taxdump_nodes_ch,
+            build_feature_table_script_ch
+        )
+
+        bracken_qc_ch = BRACKEN_PROFILE.out.tables
+            .map { _meta, _bracken, report, selection -> [report, selection] }
+            .flatten()
+        table_qc_ch = BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.qc
+            .mix(BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.sample_qc)
+
+        if (runSourceTracker2) {
+            st_counts_ch = params.sourcetracker2_taxon_scope == 'all' \
+                ? BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.raw_counts \
+                : BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.counts
+            PREPARE_SOURCETRACKER2_INPUTS(
+                st_counts_ch,
+                VALIDATE_METADATA.out.metadata,
+                BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.sample_qc,
+                prepare_sourcetracker2_script_ch
+            )
             MAKE_BIOM(PREPARE_SOURCETRACKER2_INPUTS.out.counts)
-            SOURCETRACKER2_GIBBS(MAKE_BIOM.out.biom, PREPARE_SOURCETRACKER2_INPUTS.out.map)
-            PLOT_SOURCETRACKER2(SOURCETRACKER2_GIBBS.out.proportions, PREPARE_SOURCETRACKER2_INPUTS.out.map)
+            SOURCETRACKER2_GIBBS(
+                MAKE_BIOM.out.biom,
+                PREPARE_SOURCETRACKER2_INPUTS.out.map,
+                sourcetracker2_runner_ch
+            )
+            PLOT_SOURCETRACKER2_WITH_UNCERTAINTY(
+                SOURCETRACKER2_GIBBS.out.proportions,
+                SOURCETRACKER2_GIBBS.out.uncertainty,
+                PREPARE_SOURCETRACKER2_INPUTS.out.map,
+                plot_sourcetracker2_script_ch
+            )
+            st_qc_ch = PREPARE_SOURCETRACKER2_INPUTS.out.summary
+                .mix(PREPARE_SOURCETRACKER2_INPUTS.out.exclusions)
+                .mix(PREPARE_SOURCETRACKER2_INPUTS.out.sample_qc)
+        } else {
+            st_qc_ch = channel.empty()
         }
     } else {
-        bracken_qc_ch = Channel.empty()
+        bracken_qc_ch = channel.empty()
+        table_qc_ch = channel.empty()
+        st_qc_ch = channel.empty()
     }
 
-    raw_fastqc_files = FASTQC_RAW.out.qc.map { meta, zip, html -> [zip, html] }.flatten()
-    clean_fastqc_files = FASTQC_CLEAN.out.qc.map { meta, zip, html -> [zip, html] }.flatten()
+    raw_fastqc_files = FASTQC_RAW.out.qc.map { _meta, zip, html -> [zip, html] }.flatten()
+    clean_fastqc_files = FASTQC_CLEAN.out.qc.map { _meta, zip, html -> [zip, html] }.flatten()
     fastp_qc_files = PREPROCESS_FASTP.out.logs.flatten()
-    adapterremoval_qc_files = PREPROCESS_ADAPTERREMOVAL.out.logs.flatten()
-    host_qc_files = host_qc_ch.flatten()
+    adapterremoval_qc_files = PREPROCESS_ADAPTERREMOVAL.out.logs
+        .flatten()
+        .mix(PREPROCESS_ADAPTERREMOVAL.out.qc)
 
     multiqc_files = raw_fastqc_files
         .mix(clean_fastqc_files)
         .mix(fastp_qc_files)
         .mix(adapterremoval_qc_files)
-        .mix(host_qc_files)
+        .mix(host_qc_ch)
         .mix(kraken_qc_ch)
         .mix(bracken_qc_ch)
+        .mix(table_qc_ch)
+        .mix(st_qc_ch)
         .collect()
 
     MULTIQC_REPORT(multiqc_files)

@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEST_DIR = ROOT / "examples" / "test_data"
 READ_DIR = TEST_DIR / "reads"
 REF_DIR = TEST_DIR / "refs"
+KRAKEN_DIR = TEST_DIR / "kraken2_stub_db"
 
 
 HOST = (
@@ -58,6 +59,15 @@ def main():
     with open(REF_DIR / "chm13_tiny.fa", "w") as handle:
         handle.write(">chm13_tiny\n")
         handle.write(HOST + "\n")
+    # Stub mode never reads these indexes, but production preflight deliberately
+    # requires a complete BWA bundle before any sample task is scheduled.
+    for suffix in (".amb", ".ann", ".bwt", ".pac", ".sa", ".fai"):
+        (REF_DIR / f"chm13_tiny.fa{suffix}").write_text("mstflow stub index\n")
+
+    KRAKEN_DIR.mkdir(parents=True, exist_ok=True)
+    for filename in ("hash.k2d", "opts.k2d", "taxo.k2d"):
+        (KRAKEN_DIR / filename).write_text("mstflow stub database\n")
+    (KRAKEN_DIR / "database75mers.kmer_distrib").write_text("mstflow stub distribution\n")
 
     write_fastq(
         READ_DIR / "modern_pe_R1.fastq.gz",

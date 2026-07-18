@@ -1,105 +1,167 @@
 # mstflow
 
-Nextflow workflow for metagenomic preprocessing, host removal, Kraken2/Bracken profiling, and optional SourceTracker2 attribution.
+MSTFlow is a Nextflow DSL2 workflow for fragment-aware metagenomic preprocessing, host removal, Kraken2/Bracken profiling, and optional SourceTracker2 source attribution. It supports modern and ancient, paired- and single-end libraries while keeping the biological counting unit explicit.
 
 ## Workflow
 
 ```text
 metadata.tsv
--> FastQC
--> fastp or AdapterRemoval
--> host removal
--> Kraken2
--> Bracken
--> optional prokaryote filter
--> optional SourceTracker2
--> MultiQC
+  -> metadata and reference preflight
+  -> raw FastQC
+  -> fastp (modern) or AdapterRemoval (ancient)
+  -> pair-aware host removal
+  -> cleaned FastQC
+  -> Kraken2
+  -> per-sample Bracken model selection
+  -> count/relative-abundance tables
+  -> optional SourceTracker2
+  -> MultiQC and provenance reports
 ```
 
-Preprocessing is selected per sample:
+Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`, matching the molecule-level protocol in `steps.md`. The excluded singleton and unmerged counts are reported. The optional `all_fragments` mode retains all complete molecular fragments (collapsed reads and complete unmerged pairs), preserves pairing through host removal, and converts each surviving pair into one classification record separated by a non-k-mer-forming `N` gap. Orphan singletons are quantified but excluded, matching modern paired-end handling.
 
-| sample type | tool |
-| --- | --- |
-| modern PE/SE | fastp |
-| ancient PE | AdapterRemoval --collapse |
-| ancient SE | AdapterRemoval |
+## Requirements
+
+- Nextflow 25.10.4 or newer
+- Bash
+- Mamba/Conda for the pinned environments
+- a BWA-indexed host FASTA when `remove_host: true`
+- a Kraken2 database when `run_kraken2: true`
+- matching Bracken distributions when `run_bracken: true`
+
+The primary tools are version-pinned in [`envs/mstflow.yml`](envs/mstflow.yml). SourceTracker uses its separate compatibility environment in [`envs/sourcetracker2.yml`](envs/sourcetracker2.yml).
 
 ## Run
 
+Run locally with the pinned Conda environments:
+
 ```bash
-nextflow run . -profile conda -params-file params.yml -resume
+nextflow run . -profile conda -params-file /absolute/path/to/params.yml -resume
 ```
 
-Tiny DAG test:
+The portable `slurm` profile submits processes through Slurm without assuming an account, partition, module system, work path, or storage layout:
+
+```bash
+nextflow run . -profile slurm -params-file /absolute/path/to/params.yml -resume
+```
+
+Site policies belong in an external configuration supplied with Nextflow's global `-c` option; they are intentionally not hard-coded in this repository. See [`docs/server_setup.md`](docs/server_setup.md) for portable server setup, reference validation, resource tuning, and provenance guidance.
+
+## Tests
+
+Run the self-contained stub DAG test without installing scientific tools:
 
 ```bash
 bash examples/run_tiny_stub.sh
 ```
 
+Stub mode validates workflow wiring and output contracts; it does not validate real FastQC, BWA, Kraken2, Bracken, or SourceTracker2 behavior.
+
 ## Metadata
 
-Required tab-delimited columns:
+The input must resolve to exactly one tab-delimited file. Required columns are:
 
-| column | value |
+| column | accepted value |
 | --- | --- |
-| sample_id | unique sample ID |
-| fastq_1 | R1 for PE, FASTQ for SE |
-| fastq_2 | R2 for PE, `NA` for SE |
-| layout | `PE` or `SE` |
-| age_group | `modern` or `ancient` |
+| `sample_id` | unique, filesystem-safe sample identifier |
+| `fastq_1` | absolute R1/SE FASTQ path |
+| `fastq_2` | absolute R2 path for PE; `NA` for SE |
+| `layout` | `PE` or `SE` |
+| `age_group` | `modern` or `ancient` |
 
-Recommended columns:
+Optional analysis columns include:
 
-| column | value |
+| column | purpose |
 | --- | --- |
-| preprocess_mode | usually `auto` |
-| host_ref | FASTA path or `default` |
-| source_sink | `source` or `sink` |
-| model_source_env | SourceTracker2 source label |
+| `preprocess_mode` | normally `auto` |
+| `host_ref` | sample-specific indexed FASTA, or `default` |
+| `host_group` | biological host group; non-human groups require explicit `host_ref` by default |
+| `source_sink` | exactly `source` or `sink` for SourceTracker2 |
+| `model_source_env` | source environment label; sinks use `NA` |
+| `unit_id` | biological unit used to detect duplicate/run relationships |
+| `panel_role`, `panel_layer`, `category` | preserved reference-panel design fields |
 
-## Params
+SourceTracker runs require complete, explicit source/sink assignments. Controls, holdouts, NO_BONE experiments, and production reference panels should be separate manifests rather than silently mixing roles.
+
+## Core parameters
 
 ```yaml
-input: /path/to/metadata.tsv
-outdir: results/project
+input: /absolute/path/to/metadata.tsv
+outdir: /absolute/path/to/results
 
 remove_host: true
-host_fasta: /path/to/host.fa
+host_fasta: /absolute/path/to/chm13.fa
+host_remove_max_forks: 4
+host_min_mapq: 0
+default_host_group: human
+require_explicit_host_for_nondefault: true
 
 run_kraken2: true
-kraken2_db: /path/to/kraken2_db
+kraken2_db: /absolute/path/to/k2_pluspf_20260226
+kraken2_kmer_len: 35
+kraken2_min_read_len: 35
+kraken2_confidence: 0.05
+kraken2_minimum_hit_groups: 2
+kraken2_use_names: true
+kraken2_report_minimizer_data: true
+kraken2_save_read_classifications: false
+kraken2_max_forks: 1
+kraken2_cpus: 16
+kraken2_memory: 160 GB
+kraken2_time: 36h
 
 run_bracken: true
-bracken_db: /path/to/kraken2_db
+bracken_db: /absolute/path/to/k2_pluspf_20260226
 bracken_rank: G
+bracken_read_len: auto
 
 taxon_filter: prokaryote
-taxdump: /path/to/taxdump
-drop_taxids: "0,1"
+taxdump: /absolute/path/to/taxdump
 
-run_sourcetracker2: true
+ancient_pe_mode: collapsed_only
+publish_intermediates: false
+
+run_sourcetracker2: false
+sourcetracker2_aggregate_by: unit_id
+sourcetracker2_taxon_scope: filtered
+sourcetracker2_analysis_label: production
+sourcetracker2_exclude_panel_roles: "control,holdout"
+sourcetracker2_min_kraken_classified_fraction: 0.001
+sourcetracker2_min_taxon_filter_retained_reads: 1000
+sourcetracker2_min_taxon_filter_retained_fraction: 0.001
+sourcetracker2_max_unknown_prop: 0.5
+sourcetracker2_min_top_known_prop: 0.5
+sourcetracker2_min_top_known_margin: 0.05
+sourcetracker2_loo: false
+sourcetracker2_seed: 1
 ```
 
-Use `taxon_filter: none` to skip lineage filtering.
+`bracken_read_len: auto` selects the nearest available `database<N>mers.kmer_distrib` per sample from the median observed single-read length and records the choice. For paired-end data, each mate contributes one read-length observation; the two mate lengths are never added together. A positive integer forces a model and fails if that distribution is absent.
+
+`kraken2_min_read_len` must be at least `kraken2_kmer_len`. The default Kraken confidence and minimum-hit-group settings are explicit so sources and sinks cannot silently use different classifier defaults. Per-read classifications are disabled by default; reports and downstream Bracken inputs are retained.
+
+`host_min_mapq: 0` removes an entire fragment when either mate has any primary host alignment. A threshold such as 20 is suitable only as a separately declared sensitivity analysis. Minimizer data and taxon names are enabled in the Kraken QC report; MSTFlow also emits a Bracken-compatible six-column report.
+
+`require_explicit_host_for_nondefault: true` prevents a non-human `host_group` from silently using the default human reference. Each such sample must provide its own indexed `host_ref`.
+
+Kraken memory depends on the selected database. The CPU, memory, time, and concurrency defaults are explicit and should be overridden after measuring the intended database and executor. Host removal is capped at four concurrent tasks by default to control repeated index I/O.
+
+SourceTracker defaults to biological-unit aggregation, filtered taxa, and explicit QC. Complete units are validated and filtered as a whole, so a conflicting or poor lane cannot leave a partial unit. `control` and `holdout` panel roles are excluded before modeling; clear or replace `sourcetracker2_exclude_panel_roles` only in a separately labelled validation run when one of those roles is intentionally needed. Assignments abstain when Unknown is at least 0.5, the strongest known source is below 0.5, the top sources tie, or their margin is below 0.05. SourceTracker2 2.0.1 is run in one process with a recorded `sourcetracker2_seed` for reproducibility. Set `sourcetracker2_loo: true` in a separately labelled, source-only validation run, set `sourcetracker2_source_rarefaction_depth: 0`, and retain at least two independent analysis units per source environment. In LOO, MSTFlow deterministically rarefies each unit to `sourcetracker2_sink_rarefaction_depth` before SourceTracker, then disables both buggy upstream rarefaction paths.
+
+`publish_intermediates: false` keeps large FASTQ and per-read intermediates in the resumable Nextflow work directory instead of duplicating them into the results tree.
 
 ## Outputs
 
 ```text
 results/
-├── kraken2/
 ├── bracken/
-├── tables/
-├── source_attribution/
+├── kraken2/
 ├── qc/
+├── source_attribution/
+├── tables/
 └── pipeline_info/
 ```
 
-Main tables:
+Important deliverables include Bracken counts and relative-abundance tables, AdapterRemoval/host/Kraken fragment QC, Kraken minimizer and read-length summaries, per-sample Bracken read-length selections, SourceTracker mixing proportions when enabled, MultiQC, and Nextflow trace/report/timeline files.
 
-```text
-tables/bracken_G_counts.tsv
-tables/bracken_G_relative_abundance.tsv
-tables/bracken_G_prokaryote_counts.tsv
-tables/bracken_G_prokaryote_relative_abundance.tsv
-source_attribution/sourcetracker2/mixing_proportions.txt
-```
+Run outputs, work directories, local params, downloaded data, databases, and scheduler logs are excluded by `.gitignore`. Commit source/configuration changes only; archive run provenance with the scientific analysis rather than in the code repository.

@@ -3,9 +3,15 @@
 .nextflow*
 .nextflow.log*
 work/
+work-*/
+.command.*
+.exitcode
 
 # Pipeline outputs and scratch space
 results/
+results-*/
+out/
+output/
 logs/
 tmp/
 scratch/
@@ -14,6 +20,8 @@ report.html
 timeline.html
 trace.txt
 dag.*
+slurm-*.out
+slurm-*.err
 
 # Local data, references, and databases
 data/
@@ -73,6 +81,7 @@ examples/metadata.tiny.tsv
 .conda/
 .mamba/
 conda-env/
+conda-cache/
 env/
 venv/
 .venv/
@@ -81,6 +90,19 @@ venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
+
+# Machine-specific parameters and credentials
+params.local.yml
+params.*.local.yml
+.env
+
+# Tool reports produced outside the default results directory
+*_fastqc.html
+*_fastqc.zip
+*.fastp.html
+*.fastp.json
+*_multiqc_report.html
+multiqc_data/
 
 # Archives and downloaded bundles
 *.tar

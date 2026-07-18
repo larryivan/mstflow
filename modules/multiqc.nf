@@ -5,12 +5,12 @@ process MULTIQC_REPORT {
     publishDir "${params.outdir}/qc/multiqc", mode: 'copy'
 
     input:
-    path files
+    path files, stageAs: 'qc??/*'
 
     output:
     path "multiqc_report.html", emit: report
     path "multiqc_data", emit: data
-    path "versions.yml", emit: versions
+    path "multiqc.versions.yml", emit: versions
 
     script:
     """
@@ -35,7 +35,7 @@ process MULTIQC_REPORT {
         echo -e "metric\\tvalue\\nrecognized_results\\t0" > multiqc_data/mstflow_placeholder.tsv
     fi
 
-    printf '"${task.process}":\\n    multiqc: "%s"\\n' "\$(multiqc --version | awk '{print \$NF}')" > versions.yml
+    printf '"${task.process}":\\n    multiqc: "%s"\\n' "\$(multiqc --version | awk '{print \$NF}')" > multiqc.versions.yml
     """
 
     stub:
@@ -43,6 +43,6 @@ process MULTIQC_REPORT {
     mkdir -p multiqc_data
     printf '<!doctype html><html><body>stub multiqc</body></html>\\n' > multiqc_report.html
     echo -e "metric\\tvalue\\nstub\\ttrue" > multiqc_data/stub.tsv
-    printf '"${task.process}":\\n    stub: "true"\\n' > versions.yml
+    printf '"${task.process}":\\n    stub: "true"\\n' > multiqc.versions.yml
     """
 }

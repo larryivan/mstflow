@@ -2,7 +2,17 @@ name: mstflow-sourcetracker2
 channels:
   - conda-forge
   - bioconda
+  - nodefaults
 dependencies:
-  - python=3.8
-  - sourcetracker2
-  - biom-format
+  # SourceTracker 2.0.1 is published as `sourcetracker`, not
+  # `sourcetracker2`. Python 3.8 and NumPy <1.24 retain APIs used by its
+  # historical codebase.
+  - python=3.8.20
+  - sourcetracker=2.0.1
+  - biom-format=2.1.13
+  - numpy=1.23.5
+  - pandas=1.5.3
+  - scikit-bio=0.5.8
+  - h5py=3.8.0
+  - ipyparallel=8.8.0
+  - click=8.1.7

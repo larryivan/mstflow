@@ -3,14 +3,25 @@ outdir: results/tiny_stub
 
 remove_host: true
 host_fasta: examples/test_data/refs/chm13_tiny.fa
+host_remove_max_forks: 4
+host_min_mapq: 0
+default_host_group: human
+require_explicit_host_for_nondefault: true
 
 run_kraken2: true
 kraken2_db: examples/test_data/kraken2_stub_db
+kraken2_kmer_len: 35
+kraken2_min_read_len: 35
+kraken2_confidence: 0.05
+kraken2_minimum_hit_groups: 2
+kraken2_use_names: true
+kraken2_report_minimizer_data: true
+kraken2_save_read_classifications: false
 
 run_bracken: true
 bracken_db: examples/test_data/kraken2_stub_db
 bracken_rank: G
-bracken_read_len: 100
+bracken_read_len: auto
 bracken_threshold: 1
 
 taxon_filter: none
@@ -19,5 +30,23 @@ drop_taxids: "0,1"
 run_sourcetracker2: true
 sourcetracker2_source_rarefaction_depth: 0
 sourcetracker2_sink_rarefaction_depth: 0
+sourcetracker2_aggregate_by: unit_id
+sourcetracker2_taxon_scope: all
+sourcetracker2_analysis_label: tiny_stub
+sourcetracker2_include_panel_roles: ""
+sourcetracker2_exclude_panel_roles: "control,holdout"
+sourcetracker2_exclude_source_envs: ""
+sourcetracker2_exclude_source_classes: ""
+sourcetracker2_min_kraken_classified_fraction: 0
+sourcetracker2_min_taxon_filter_retained_reads: 0
+sourcetracker2_min_taxon_filter_retained_fraction: 0
+sourcetracker2_max_unknown_prop: 0.5
+sourcetracker2_min_top_known_prop: 0.5
+sourcetracker2_min_top_known_margin: 0.05
+sourcetracker2_loo: false
+sourcetracker2_seed: 1
 
 multiqc_title: mstflow tiny stub
+ancient_pe_mode: collapsed_only
+fragment_pair_gap: 100
+publish_intermediates: false
