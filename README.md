@@ -74,6 +74,7 @@ Optional analysis columns include:
 | column | purpose |
 | --- | --- |
 | `preprocess_mode` | normally `auto` |
+| `host_action` | `remove` or `skip`; omitted rows retain the historical `remove` behavior |
 | `host_ref` | sample-specific indexed FASTA, or `default` |
 | `host_group` | biological host group; non-human groups require explicit `host_ref` by default |
 | `source_sink` | exactly `source` or `sink` for SourceTracker2 |
@@ -95,6 +96,7 @@ host_remove_max_forks: 4
 host_min_mapq: 0
 default_host_group: human
 require_explicit_host_for_nondefault: true
+require_explicit_host_action: false
 
 run_kraken2: true
 kraken2_db: /absolute/path/to/k2_pluspf_20260226
@@ -145,6 +147,8 @@ If a valid Kraken report yields no estimate at the requested Bracken rank and `b
 `host_min_mapq: 0` removes an entire fragment when either mate has any primary host alignment. A threshold such as 20 is suitable only as a separately declared sensitivity analysis. Minimizer data and taxon names are enabled in the Kraken QC report; MSTFlow also emits a Bracken-compatible six-column report.
 
 `require_explicit_host_for_nondefault: true` prevents a non-human `host_group` from silently using the default human reference. Each such sample must provide its own indexed `host_ref`.
+
+`host_action: remove` sends the sample through BWA host subtraction. `host_action: skip` bypasses BWA and passes the preprocessed reads directly to clean-read QC and classification; skip rows must use `host_ref: NA`. Manifests that omit `host_action` remain backward compatible and default to `remove`. For a new mixed host-aware run, set `require_explicit_host_action: true` so every row must declare its policy.
 
 Kraken memory depends on the selected database. The CPU, memory, time, and concurrency defaults are explicit and should be overridden after measuring the intended database and executor. Host removal is capped at four concurrent tasks by default to control repeated index I/O.
 

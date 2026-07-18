@@ -40,6 +40,115 @@ def run_script(script, *args, cwd=None, check=True):
 
 
 class ReferenceInterfaceTests(unittest.TestCase):
+    def test_validate_host_action_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fq = root / "reads.fq.gz"
+            fq.touch()
+            host = root / "human.fa"
+            host.write_text(">chr1\nACGT\n")
+            for suffix in [".amb", ".ann", ".bwt", ".pac", ".sa"]:
+                (root / f"human.fa{suffix}").write_text("index\n")
+
+            fields = [
+                "sample_id",
+                "fastq_1",
+                "fastq_2",
+                "layout",
+                "age_group",
+                "host_action",
+                "host_group",
+                "host_ref",
+            ]
+            base = {
+                "sample_id": "sample_1",
+                "fastq_1": str(fq),
+                "fastq_2": "NA",
+                "layout": "SE",
+                "age_group": "ancient",
+                "host_action": "skip",
+                "host_group": "none",
+                "host_ref": "NA",
+            }
+            metadata = root / "metadata.tsv"
+            output = root / "validated.tsv"
+
+            write_tsv(metadata, fields, [base])
+            run_script(
+                "validate_metadata.py",
+                "--input",
+                metadata,
+                "--output",
+                output,
+                "--default-host-fasta",
+                host,
+                "--require-explicit-host-action",
+            )
+            normalized = read_tsv(output)[0]
+            self.assertEqual(normalized["host_action"], "skip")
+            self.assertEqual(normalized["host_group"], "none")
+            self.assertEqual(normalized["host_ref"], "NA")
+
+            missing_action = dict(base, host_action="NA")
+            write_tsv(metadata, fields, [missing_action])
+            missing = run_script(
+                "validate_metadata.py",
+                "--input",
+                metadata,
+                "--output",
+                output,
+                "--require-explicit-host-action",
+                check=False,
+            )
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("host_action must be explicitly set", missing.stderr)
+
+            skip_with_reference = dict(base, host_ref="default")
+            write_tsv(metadata, fields, [skip_with_reference])
+            conflicted = run_script(
+                "validate_metadata.py",
+                "--input",
+                metadata,
+                "--output",
+                output,
+                check=False,
+            )
+            self.assertNotEqual(conflicted.returncode, 0)
+            self.assertIn("host_action=skip requires host_ref=NA", conflicted.stderr)
+
+            remove = dict(
+                base,
+                host_action="remove",
+                host_group="human",
+                host_ref="default",
+            )
+            write_tsv(metadata, fields, [remove])
+            run_script(
+                "validate_metadata.py",
+                "--input",
+                metadata,
+                "--output",
+                output,
+                "--default-host-fasta",
+                host,
+                "--require-explicit-host-action",
+            )
+            self.assertEqual(read_tsv(output)[0]["host_action"], "remove")
+
+            (root / "human.fa.sa").unlink()
+            missing_index = run_script(
+                "validate_metadata.py",
+                "--input",
+                metadata,
+                "--output",
+                output,
+                "--default-host-fasta",
+                host,
+                check=False,
+            )
+            self.assertNotEqual(missing_index.returncode, 0)
+            self.assertIn("BWA index sidecar does not exist", missing_index.stderr)
+
     def test_validate_preserves_panel_fields_and_guards_host_group(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -458,6 +567,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             "category",
             "validation_group",
             "project_group",
+            "host_action",
             "host_group",
             "SourceSink",
             "Env",
@@ -466,12 +576,12 @@ class ReferenceInterfaceTests(unittest.TestCase):
             "#SampleID",
         ]
         rows = [
-            ["bone1", "bone_unit", "source", "bone", "bone", "source", "reference", "bone", "VG", "PG", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["bone2", "bone_unit", "source", "bone", "bone", "source", "reference", "bone", "VG", "PG", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["soil1", "soil_unit", "source", "soil", "soil", "source", "reference", "soil", "VG", "PG", "none", "bad", "bad", "bad", "bad", "bad"],
-            ["soil2", "soil_unit", "source", "soil", "soil", "source", "reference", "soil", "VG", "PG", "none", "bad", "bad", "bad", "bad", "bad"],
-            ["sink1", "sink_unit", "sink", "bone", "bone", "sink", "target", "bone", "VG", "PG", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["blank1", "blank_unit", "source", "blank", "blank", "control", "qc", "blank", "VG", "PG", "none", "bad", "bad", "bad", "bad", "bad"],
+            ["bone1", "bone_unit", "source", "bone", "bone", "source", "reference", "bone", "VG", "PG", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
+            ["bone2", "bone_unit", "source", "bone", "bone", "source", "reference", "bone", "VG", "PG", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
+            ["soil1", "soil_unit", "source", "soil", "soil", "source", "reference", "soil", "VG", "PG", "skip", "none", "bad", "bad", "bad", "bad", "bad"],
+            ["soil2", "soil_unit", "source", "soil", "soil", "source", "reference", "soil", "VG", "PG", "skip", "none", "bad", "bad", "bad", "bad", "bad"],
+            ["sink1", "sink_unit", "sink", "bone", "bone", "sink", "target", "bone", "VG", "PG", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
+            ["blank1", "blank_unit", "source", "blank", "blank", "control", "qc", "blank", "VG", "PG", "skip", "none", "bad", "bad", "bad", "bad", "bad"],
         ]
         write_tsv(metadata, fields, [dict(zip(fields, row)) for row in rows])
         counts = root / "counts.tsv"
@@ -546,6 +656,11 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertEqual(set(mapping), {"soil_unit", "sink_unit"})
             self.assertEqual(mapping["soil_unit"]["aggregation_n"], "2")
             self.assertEqual(mapping["soil_unit"]["validation_group"], "VG")
+            self.assertEqual(mapping["soil_unit"]["host_action"], "skip")
+            self.assertEqual(mapping["soil_unit"]["host_group"], "none")
+            qc = {row["input_sample_id"]: row for row in read_tsv(root / "st_qc.tsv")}
+            self.assertEqual(qc["soil1"]["host_action"], "skip")
+            self.assertEqual(qc["soil1"]["host_group"], "none")
             excluded = read_tsv(root / "excluded.tsv")
             reasons = {row["input_sample_id"]: row["exclusion_reason"] for row in excluded}
             self.assertTrue(reasons["bone1"].startswith("source_environment_excluded"))

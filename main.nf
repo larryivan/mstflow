@@ -235,6 +235,9 @@ params.sourcetracker2_loo = asBool('sourcetracker2_loo', params.sourcetracker2_l
 params.require_explicit_host_for_nondefault = asBool(
     'require_explicit_host_for_nondefault', params.require_explicit_host_for_nondefault
 )
+params.require_explicit_host_action = asBool(
+    'require_explicit_host_action', params.require_explicit_host_action
+)
 
 params.ancient_pe_mode = requireChoice(
     'ancient_pe_mode', params.ancient_pe_mode, ['collapsed_only', 'all_fragments']
@@ -459,11 +462,17 @@ workflow {
         .splitCsv(header: true, sep: '\t')
         .map { row -> tuple(metaFromRow(row), readListFromRow(row)) }
 
+    host_bundle_ch = removeHost \
+        ? samples_ch
+            .filter { meta, _reads -> meta.host_action == 'remove' }
+            .map { meta, _reads ->
+                tuple(meta.id, hostBundleFor(hostReferenceFor(meta, params.host_fasta)))
+            }
+        : channel.empty()
+
     sample_views = samples_ch.multiMap { meta, reads ->
-        def hostBundle = removeHost ? hostBundleFor(hostReferenceFor(meta, params.host_fasta)) : []
         raw: tuple(meta, reads)
         preprocess: tuple(meta, reads)
-        host: tuple(meta.id, hostBundle)
     }
 
     raw_qc_ch = sample_views.raw.map { meta, reads ->
@@ -482,12 +491,16 @@ workflow {
     prehost_ch = PREPROCESS_FASTP.out.reads.mix(PREPROCESS_ADAPTERREMOVAL.out.reads)
 
     if (removeHost) {
-        host_input_ch = prehost_ch
+        host_views = prehost_ch.branch { meta, _reads ->
+            remove: meta.host_action == 'remove'
+            skip: meta.host_action == 'skip'
+        }
+        host_input_ch = host_views.remove
             .map { meta, reads -> tuple(meta.id, meta, reads) }
-            .join(sample_views.host)
+            .join(host_bundle_ch)
             .map { _id, meta, reads, hostBundle -> tuple(meta, reads, hostBundle) }
         HOST_REMOVE_BWA(host_input_ch, fragment_helper_ch)
-        clean_ch = HOST_REMOVE_BWA.out.reads
+        clean_ch = HOST_REMOVE_BWA.out.reads.mix(host_views.skip)
         host_qc_ch = HOST_REMOVE_BWA.out.logs.mix(HOST_REMOVE_BWA.out.qc)
     } else {
         clean_ch = prehost_ch

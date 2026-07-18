@@ -35,19 +35,21 @@ def write_fastq(path, records):
 
 def write_metadata(path):
     rows = [
-        ("modern_pe", READ_DIR / "modern_pe_R1.fastq.gz", READ_DIR / "modern_pe_R2.fastq.gz", "PE", "modern", "source", "human_fecal_gastrointestinal"),
-        ("modern_se", READ_DIR / "modern_se.fastq.gz", "NA", "SE", "modern", "source", "extraction_library_blank"),
-        ("ancient_pe", READ_DIR / "ancient_pe_R1.fastq.gz", READ_DIR / "ancient_pe_R2.fastq.gz", "PE", "ancient", "sink", "human_fecal_gastrointestinal"),
-        ("ancient_se", READ_DIR / "ancient_se.fastq.gz", "NA", "SE", "ancient", "sink", "extraction_library_blank"),
+        ("modern_pe", READ_DIR / "modern_pe_R1.fastq.gz", READ_DIR / "modern_pe_R2.fastq.gz", "PE", "modern", "source", "human_fecal_gastrointestinal", "remove"),
+        ("modern_se", READ_DIR / "modern_se.fastq.gz", "NA", "SE", "modern", "source", "extraction_library_blank", "skip"),
+        ("ancient_pe", READ_DIR / "ancient_pe_R1.fastq.gz", READ_DIR / "ancient_pe_R2.fastq.gz", "PE", "ancient", "sink", "human_fecal_gastrointestinal", "remove"),
+        ("ancient_se", READ_DIR / "ancient_se.fastq.gz", "NA", "SE", "ancient", "sink", "extraction_library_blank", "skip"),
     ]
     with open(path, "w") as handle:
         handle.write(
-            "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\tpreprocess_mode\thost_ref\t"
+            "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\tpreprocess_mode\thost_action\thost_group\thost_ref\t"
             "source_sink\tmodel_source_env\tsample_label\tproject\trun\n"
         )
-        for sample_id, fastq_1, fastq_2, layout, age_group, source_sink, env in rows:
+        for sample_id, fastq_1, fastq_2, layout, age_group, source_sink, env, host_action in rows:
+            host_group = "human" if host_action == "remove" else "none"
+            host_ref = str(REF_DIR / "chm13_tiny.fa") if host_action == "remove" else "NA"
             handle.write(
-                f"{sample_id}\t{fastq_1}\t{fastq_2}\t{layout}\t{age_group}\tauto\t{REF_DIR / 'chm13_tiny.fa'}\t"
+                f"{sample_id}\t{fastq_1}\t{fastq_2}\t{layout}\t{age_group}\tauto\t{host_action}\t{host_group}\t{host_ref}\t"
                 f"{source_sink}\t{env}\t{sample_id}\ttiny\t{sample_id}\n"
             )
 

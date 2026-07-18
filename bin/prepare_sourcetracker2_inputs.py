@@ -20,6 +20,7 @@ CONSISTENT_AGGREGATION_FIELDS = (
     "panel_layer",
     "validation_group",
     "project_group",
+    "host_action",
     "host_group",
 )
 QC_FIELDS = [
@@ -35,6 +36,7 @@ QC_FIELDS = [
     "category",
     "validation_group",
     "project_group",
+    "host_action",
     "host_group",
     "taxon_scope",
     "kraken_classified_fraction",
@@ -350,6 +352,9 @@ def canonical_group_value(row, field):
         return metadata_env(row)
     if field == "source_class":
         return metadata_source_class(row)
+    if field == "host_group":
+        value = norm(row.get(field))
+        return "none" if value.casefold() == "none" else first_present(row, field)
     return first_present(row, field)
 
 
@@ -371,7 +376,8 @@ def collapse_values(rows, field):
     values = []
     for row in rows:
         value = norm(row.get(field))
-        if not is_na(value) and value not in values:
+        is_explicit_no_host = field == "host_group" and value.casefold() == "none"
+        if (is_explicit_no_host or not is_na(value)) and value not in values:
             values.append(value)
     return "NA" if not values else values[0] if len(values) == 1 else ";".join(values)
 
@@ -422,7 +428,8 @@ def make_qc_row(
         "category": first_present(row, "category") or "NA",
         "validation_group": first_present(row, "validation_group") or "NA",
         "project_group": first_present(row, "project_group") or "NA",
-        "host_group": first_present(row, "host_group") or "NA",
+        "host_action": first_present(row, "host_action") or "NA",
+        "host_group": canonical_group_value(row, "host_group") or "NA",
         "taxon_scope": taxon_scope,
         "kraken_classified_fraction": feature_qc.get("kraken_classified_fraction", "NA"),
         "bracken_total_reads": feature_qc.get("bracken_total_reads", "NA"),

@@ -16,10 +16,12 @@ ALLOWED_PREPROCESS_MODES = {
     "adapterremoval_se",
 }
 ALLOWED_SOURCE_SINK = {"source", "sink"}
+ALLOWED_HOST_ACTIONS = {"remove", "skip"}
 SAFE_SAMPLE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 STANDARD_METADATA_COLUMNS = [
     "preprocess_mode",
     "bracken_read_len",
+    "host_action",
     "host_ref",
     "source_sink",
     "model_source_env",
@@ -102,9 +104,10 @@ def normalized_output_row(
     layout,
     age_group,
     preprocess_mode,
+    host_action,
+    host_group,
     host_ref,
     input_columns,
-    default_host_group,
 ):
     source_sink = norm(row.get("source_sink")).lower()
     if is_na(source_sink):
@@ -136,7 +139,10 @@ def normalized_output_row(
         "age_group": age_group,
         "preprocess_mode": preprocess_mode,
         "bracken_read_len": requested_bracken_length,
-        "host_ref": "default" if is_na(host_ref) else host_ref,
+        "host_action": host_action,
+        "host_ref": (
+            "NA" if host_action == "skip" else ("default" if is_na(host_ref) else host_ref)
+        ),
         "source_sink": "NA" if is_na(source_sink) else source_sink,
         "model_source_env": "NA" if is_na(model_source_env) else model_source_env,
         "unit_id": first_present(row, "unit_id") or sample_id,
@@ -145,7 +151,7 @@ def normalized_output_row(
         "category": category or "NA",
         "validation_group": first_present(row, "validation_group") or "NA",
         "project_group": first_present(row, "project_group") or "NA",
-        "host_group": (first_present(row, "host_group") or default_host_group).lower(),
+        "host_group": host_group,
         "source_major": first_present(row, "source_major", "major") or "NA",
         "source_class": first_present(row, "source_class", "class", "category") or "NA",
         "sample_label": norm(row.get("sample_label")) or sample_id,
@@ -175,6 +181,14 @@ def main():
             "Reject rows whose host_group differs from --default-host-group when "
             "host_ref is default/NA. This prevents non-human samples from silently "
             "using the default human reference."
+        ),
+    )
+    parser.add_argument(
+        "--require-explicit-host-action",
+        action="store_true",
+        help=(
+            "Reject rows that omit host_action. Use this for mixed host-aware runs "
+            "so every row explicitly declares remove or skip."
         ),
     )
     args = parser.parse_args()
@@ -278,30 +292,56 @@ def main():
                         f"line {line_no}: bracken_read_len must be auto or a positive integer"
                     )
 
-            host_ref = norm(row.get("host_ref")) or "default"
-            if not is_na(host_ref) and host_ref != "default" and not os.path.exists(host_ref):
-                errors.append(f"line {line_no}: host_ref must be default, NA, or an existing FASTA path: {host_ref}")
-            if args.default_host_fasta is not None:
-                effective_host_ref = (
-                    norm(args.default_host_fasta)
-                    if is_na(host_ref) or host_ref == "default"
-                    else host_ref
-                )
-                if effective_host_ref not in checked_host_references:
-                    checked_host_references[effective_host_ref] = host_reference_errors(
-                        effective_host_ref
-                    )
-                    errors.extend(checked_host_references[effective_host_ref])
-            host_group = (first_present(row, "host_group") or default_host_group).lower()
-            if (
-                args.require_explicit_host_for_nondefault
-                and host_group != default_host_group
-                and (is_na(host_ref) or host_ref == "default")
-            ):
+            requested_host_action = norm(row.get("host_action")).lower()
+            if args.require_explicit_host_action and is_na(requested_host_action):
                 errors.append(
-                    f"line {line_no}: host_group '{host_group}' requires an explicit host_ref; "
-                    f"the default reference is for host_group '{default_host_group}'"
+                    f"line {line_no}: host_action must be explicitly set to remove or skip"
                 )
+            host_action = "remove" if is_na(requested_host_action) else requested_host_action
+            if host_action not in ALLOWED_HOST_ACTIONS:
+                errors.append(
+                    f"line {line_no}: host_action must be remove or skip"
+                )
+                # Continue validation deterministically without treating an
+                # invalid value as an accidental skip.
+                host_action = "remove"
+
+            host_ref = norm(row.get("host_ref")) or "default"
+            requested_host_group = norm(row.get("host_group")).lower()
+            host_group = (
+                "none" if host_action == "skip" else default_host_group
+            ) if is_na(requested_host_group) else requested_host_group
+            if host_action == "skip":
+                if not is_na(host_ref):
+                    errors.append(
+                        f"line {line_no}: host_action=skip requires host_ref=NA"
+                    )
+                host_ref = "NA"
+            else:
+                if not is_na(host_ref) and host_ref != "default" and not os.path.exists(host_ref):
+                    errors.append(
+                        f"line {line_no}: host_ref must be default, NA, or an existing FASTA path: {host_ref}"
+                    )
+                if args.default_host_fasta is not None:
+                    effective_host_ref = (
+                        norm(args.default_host_fasta)
+                        if is_na(host_ref) or host_ref == "default"
+                        else host_ref
+                    )
+                    if effective_host_ref not in checked_host_references:
+                        checked_host_references[effective_host_ref] = host_reference_errors(
+                            effective_host_ref
+                        )
+                        errors.extend(checked_host_references[effective_host_ref])
+                if (
+                    args.require_explicit_host_for_nondefault
+                    and host_group != default_host_group
+                    and (is_na(host_ref) or host_ref == "default")
+                ):
+                    errors.append(
+                        f"line {line_no}: host_group '{host_group}' requires an explicit host_ref; "
+                        f"the default reference is for host_group '{default_host_group}'"
+                    )
 
             source_sink = norm(row.get("source_sink")).lower()
             if is_na(source_sink):
@@ -333,9 +373,10 @@ def main():
                     layout,
                     age_group,
                     preprocess_mode,
+                    host_action,
+                    host_group,
                     host_ref,
                     reader.fieldnames,
-                    default_host_group,
                 )
             )
 

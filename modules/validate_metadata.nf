@@ -15,8 +15,10 @@ process VALIDATE_METADATA {
     script:
     def defaultHostGroup = params.get('default_host_group', 'human')
     def requireExplicitHost = params.get('require_explicit_host_for_nondefault', false).toString().toBoolean()
+    def requireExplicitHostAction = params.get('require_explicit_host_action', false).toString().toBoolean()
     def removeHost = params.get('remove_host', true).toString().toBoolean()
     def requireExplicitHostArg = removeHost && requireExplicitHost ? '--require-explicit-host-for-nondefault' : ''
+    def requireExplicitHostActionArg = removeHost && requireExplicitHostAction ? '--require-explicit-host-action' : ''
     def configuredHostFasta = params.get('host_fasta', '') ?: ''
     def defaultHostFasta = configuredHostFasta ? file(configuredHostFasta).toString() : ''
     def defaultHostFastaArg = removeHost ? "--default-host-fasta '${defaultHostFasta}'" : ''
@@ -25,7 +27,7 @@ process VALIDATE_METADATA {
         --input "${metadata}" \\
         --output "metadata.validated.tsv" \\
         --default-host-group '${defaultHostGroup}' \\
-        ${requireExplicitHostArg} ${defaultHostFastaArg}
+        ${requireExplicitHostArg} ${requireExplicitHostActionArg} ${defaultHostFastaArg}
 
     printf '"${task.process}":\\n    python: "%s"\\n' "\$(python3 --version 2>&1 | sed 's/Python //')" > validate_metadata_versions.yml
     """
@@ -33,8 +35,10 @@ process VALIDATE_METADATA {
     stub:
     def defaultHostGroup = params.get('default_host_group', 'human')
     def requireExplicitHost = params.get('require_explicit_host_for_nondefault', false).toString().toBoolean()
+    def requireExplicitHostAction = params.get('require_explicit_host_action', false).toString().toBoolean()
     def removeHost = params.get('remove_host', true).toString().toBoolean()
     def requireExplicitHostArg = removeHost && requireExplicitHost ? '--require-explicit-host-for-nondefault' : ''
+    def requireExplicitHostActionArg = removeHost && requireExplicitHostAction ? '--require-explicit-host-action' : ''
     def configuredHostFasta = params.get('host_fasta', '') ?: ''
     def defaultHostFasta = configuredHostFasta ? file(configuredHostFasta).toString() : ''
     def defaultHostFastaArg = removeHost ? "--default-host-fasta '${defaultHostFasta}'" : ''
@@ -43,7 +47,7 @@ process VALIDATE_METADATA {
         --input "${metadata}" \\
         --output "metadata.validated.tsv" \\
         --default-host-group '${defaultHostGroup}' \\
-        ${requireExplicitHostArg} ${defaultHostFastaArg}
+        ${requireExplicitHostArg} ${requireExplicitHostActionArg} ${defaultHostFastaArg}
     printf '"${task.process}":\\n    stub: "true"\\n' > validate_metadata_versions.yml
     """
 }

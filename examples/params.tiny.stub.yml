@@ -7,6 +7,7 @@ host_remove_max_forks: 4
 host_min_mapq: 0
 default_host_group: human
 require_explicit_host_for_nondefault: true
+require_explicit_host_action: true
 
 run_kraken2: true
 kraken2_db: examples/test_data/kraken2_stub_db
