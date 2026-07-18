@@ -535,6 +535,7 @@ workflow {
         bracken_qc_ch = BRACKEN_PROFILE.out.tables
             .map { _meta, _bracken, report, selection -> [report, selection] }
             .flatten()
+            .mix(BRACKEN_PROFILE.out.status)
         table_qc_ch = BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.qc
             .mix(BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.sample_qc)
 
