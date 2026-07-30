@@ -2,8 +2,8 @@
 
 The handoff contains:
 
-- `download_samples.csv`: public-data URLs and checksums;
-- `download_aria2c.py`: resumable downloader and verifier;
+- `download_samples.csv`: public-data manifest and checksums;
+- `download_samples.aria2`: standard aria2 input file;
 - `mstflow_input.tsv`: pipeline input; and
 - `params.yml`: Kraken2/Bracken settings.
 
@@ -12,29 +12,50 @@ removal and SourceTracker2 are disabled for this first pass.
 
 ## 1. Download the samples
 
-Requirements: Python 3.9+, `aria2c`, SRA Toolkit, and `pigz`.
+Requirements: `aria2c`, SRA Toolkit, and `pigz`.
 
 Put the four files in one empty run directory, then run:
 
 ```bash
 cd /absolute/path/to/reference-panel-run
 
-python3 ./download_aria2c.py ./download_samples.csv \
-  --root "$PWD" \
-  --jobs 16 \
-  --connections-per-file 1 \
-  --sra-jobs 2 \
-  --sra-threads 8
+aria2c -c -j 16 -x 4 -s 4 \
+  --file-allocation=none \
+  --check-integrity=true \
+  --auto-file-renaming=false \
+  --input-file=download_samples.aria2
 ```
 
-The script resumes partial transfers, verifies sizes and MD5 checksums,
-converts the SRA rows, and validates the FASTQs. A successful run ends with:
+The aria2 input file contains every destination and the repository MD5 for all
+direct FASTQs. The command is resumable; rerun it unchanged after an
+interrupted transfer. The SRA archives are checked with `vdb-validate` below.
 
-```text
-PASS: all requested downloads are complete and verified
+Eleven rows are SRA archives. Convert them using the target FASTQ paths in the
+last two CSV columns:
+
+```bash
+mkdir -p .sra_conversion_tmp
+
+tail -n +2 download_samples.csv |
+while IFS=, read -r id cohort kind project run url md5 bytes sra fastq_1 fastq_2
+do
+  test "$kind" = sra || continue
+  test -s "$fastq_1" && test -s "$fastq_2" && continue
+
+  vdb-validate "$sra"
+  tmp="$(mktemp -d ".sra_conversion_tmp/${run}.XXXXXX")"
+  fasterq-dump "$sra" --split-files --skip-technical \
+    --threads 8 --outdir "$tmp"
+  pigz -n -p 8 "$tmp/${run}_1.fastq" "$tmp/${run}_2.fastq"
+
+  mkdir -p "$(dirname "$fastq_1")" "$(dirname "$fastq_2")"
+  mv "$tmp/${run}_1.fastq.gz" "$fastq_1"
+  mv "$tmp/${run}_2.fastq.gz" "$fastq_2"
+  rmdir "$tmp"
+done
+
+find data -type f -name '*.fastq.gz' -exec gzip -t {} +
 ```
-
-It is safe to rerun the same command.
 
 ## 2. Configure the database
 
