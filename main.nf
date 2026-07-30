@@ -267,6 +267,10 @@ params.fragment_pair_gap = asInteger(
     'fragment_pair_gap', params.fragment_pair_gap, params.kraken2_kmer_len
 )
 params.host_min_mapq = asInteger('host_min_mapq', params.host_min_mapq, 0)
+// Compression level for helper-written FASTQ. It changes only the compressed
+// representation, never decompressed content, fragment membership, or counts.
+// Level 0 (stored) is valid, so this must never use a truthiness fallback.
+params.fastq_gzip_level = asInteger('fastq_gzip_level', params.fastq_gzip_level, 0, 9)
 params.host_remove_max_forks = asInteger('host_remove_max_forks', params.host_remove_max_forks, 1)
 params.kraken2_max_forks = asInteger('kraken2_max_forks', params.kraken2_max_forks, 1)
 params.kraken2_cpus = asInteger('kraken2_cpus', params.kraken2_cpus, 1)
@@ -342,6 +346,11 @@ workflow {
         error "Parameter 'sourcetracker2_analysis_label' must be filesystem-safe"
     }
 
+    // '--check-names' is deliberately rejected: it is not a Kraken2 2.1.6 option.
+    // Its Perl wrapper parses long options with Getopt::Long and ignores the
+    // parse result, so an unknown long option only warns and classification
+    // continues with exit 0. KRAKEN2_PROFILE fails closed on that warning, and
+    // mate identity is verified by the fragment helper before Kraken2 runs.
     rejectReservedArgs(
         'kraken2_extra_args',
         params.kraken2_extra_args,
@@ -491,16 +500,26 @@ workflow {
     prehost_ch = PREPROCESS_FASTP.out.reads.mix(PREPROCESS_ADAPTERREMOVAL.out.reads)
 
     if (removeHost) {
+        // Fail closed rather than silently dropping samples. `host_action` is
+        // the one branch key whose input column is optional, so a validated
+        // manifest written before host policies existed would otherwise lose
+        // every row here without any error.
         host_views = prehost_ch.branch { meta, _reads ->
             remove: meta.host_action == 'remove'
             skip: meta.host_action == 'skip'
+            undeclared: true
+        }
+        undeclared_host_action_ch = host_views.undeclared.map { meta, _reads ->
+            error "Sample '${meta.id}' has host_action '${meta.host_action}'; validated metadata must declare remove or skip"
         }
         host_input_ch = host_views.remove
             .map { meta, reads -> tuple(meta.id, meta, reads) }
             .join(host_bundle_ch)
             .map { _id, meta, reads, hostBundle -> tuple(meta, reads, hostBundle) }
         HOST_REMOVE_BWA(host_input_ch, fragment_helper_ch)
-        clean_ch = HOST_REMOVE_BWA.out.reads.mix(host_views.skip)
+        clean_ch = HOST_REMOVE_BWA.out.reads
+            .mix(host_views.skip)
+            .mix(undeclared_host_action_ch)
         host_qc_ch = HOST_REMOVE_BWA.out.logs.mix(HOST_REMOVE_BWA.out.qc)
     } else {
         clean_ch = prehost_ch
@@ -530,12 +549,17 @@ workflow {
         }
         BRACKEN_PROFILE(bracken_input_ch, fragment_helper_ch)
 
+        // `collect()` preserves task completion order, so the same inputs can
+        // reach a terminal process in a different order on every run. Sorting
+        // by file name makes the staged list, the rendered command line, and
+        // therefore the task cache key depend only on the inputs. The tables
+        // themselves are order-invariant, so results do not change.
         bracken_files_ch = BRACKEN_PROFILE.out.tables
             .map { _meta, bracken, _report, _selection -> bracken }
-            .collect()
+            .toSortedList { left, right -> left.name <=> right.name }
         kraken_reports_ch = KRAKEN2_PROFILE.out.reports
             .map { _meta, report, _readLength -> report }
-            .collect()
+            .toSortedList { left, right -> left.name <=> right.name }
 
         BUILD_FEATURE_TABLE_WITH_KRAKEN_QC(
             VALIDATE_METADATA.out.metadata,
@@ -593,6 +617,9 @@ workflow {
         .flatten()
         .mix(PREPROCESS_ADAPTERREMOVAL.out.qc)
 
+    // Sorted so MultiQC always stages the same file into the same qcNN
+    // directory, which keeps the report input set and the task cache key
+    // independent of task completion order.
     multiqc_files = raw_fastqc_files
         .mix(clean_fastqc_files)
         .mix(fastp_qc_files)
@@ -602,7 +629,7 @@ workflow {
         .mix(bracken_qc_ch)
         .mix(table_qc_ch)
         .mix(st_qc_ch)
-        .collect()
+        .toSortedList { left, right -> left.name <=> right.name }
 
     MULTIQC_REPORT(multiqc_files)
 }

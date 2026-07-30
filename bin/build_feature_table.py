@@ -2,10 +2,14 @@
 import argparse
 import csv
 import math
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
 PROKARYOTE_ROOTS = {"2", "2157"}
+# A read count wider than a 128-bit integer is not physically obtainable; the
+# bound exists so an implausible magnitude fails fast instead of being expanded.
+MAX_COUNT_DIGITS = 38
 ROOT_TAXIDS = {"0", "1"}
 BRACKEN_SUFFIXES = (".bracken.tsv", ".bracken.txt", ".tsv", ".txt")
 KRAKEN_SUFFIXES = (
@@ -67,6 +71,40 @@ def finite_nonnegative(value, context):
     return number
 
 
+def exact_count(value, context):
+    """Parse a read count as an exact integer.
+
+    Accepts the integer-valued spellings tools actually emit (``8``, ``8.0``,
+    ``8e0``) and rejects fractional, negative, NaN, and infinite values. Counts
+    are kept as Python ints so summing and formatting stay exact; only relative
+    abundances are floating point.
+    """
+    text = "" if value is None else str(value).strip()
+    try:
+        number = Decimal(text)
+    except (InvalidOperation, ValueError):
+        raise SystemExit(f"{context} is not numeric: {value!r}")
+    if not number.is_finite() or number < 0:
+        raise SystemExit(f"{context} must be finite and non-negative: {value!r}")
+    # Bound the magnitude before int() materialises the digits. Decimal treats
+    # a token such as "1e999999999" as finite, and expanding it would allocate a
+    # billion-digit integer inside a non-interruptible C call; the previous
+    # float-based parser collapsed it to inf and rejected it cleanly.
+    if number.adjusted() >= MAX_COUNT_DIGITS:
+        raise SystemExit(
+            f"{context} needs more than {MAX_COUNT_DIGITS} digits "
+            f"and cannot be a read count: {value!r}"
+        )
+    if number != number.to_integral_value():
+        raise SystemExit(f"{context} must be a whole read count: {value!r}")
+    return int(number)
+
+
+def format_count(value):
+    """Render a count exactly, with no float rounding or exponent notation."""
+    return "NA" if value is None else str(int(value))
+
+
 def read_bracken(path):
     sample = sample_id(path)
     counts = {}
@@ -83,11 +121,11 @@ def read_bracken(path):
             if not taxid or not name:
                 raise SystemExit(f"{path}:{line_no}: taxonomy_id and name are required")
             fid = feature_id(taxid, name)
-            count = finite_nonnegative(
-                row["new_est_reads"] or 0,
-                f"{path}:{line_no}:new_est_reads",
+            count = exact_count(
+                row["new_est_reads"],
+                f"{path}:{line_no}:new_est_reads (sample {sample})",
             )
-            counts[fid] = counts.get(fid, 0.0) + count
+            counts[fid] = counts.get(fid, 0) + count
             features[fid] = {
                 "feature_id": fid,
                 "taxid": taxid,
@@ -110,7 +148,7 @@ def read_kraken_report(path):
             parts = line.rstrip("\n").split("\t")
             if len(parts) < 6:
                 raise SystemExit(f"{path}:{line_no}: expected at least six Kraken report columns")
-            clade_reads = finite_nonnegative(parts[1].strip(), f"{path}:{line_no}:clade_reads")
+            clade_reads = exact_count(parts[1].strip(), f"{path}:{line_no}:clade_reads")
             percent = finite_nonnegative(parts[0].strip(), f"{path}:{line_no}:percent")
             rank = parts[3].strip()
             taxid = parts[4].strip()
@@ -123,9 +161,9 @@ def read_kraken_report(path):
     # Kraken legitimately omits the root row for an all-unclassified sample,
     # and may omit the U row for a fully classified sample.
     if classified is None and unclassified is not None and unclassified_percent >= 99.999:
-        classified = 0.0
+        classified = 0
     if unclassified is None and classified is not None and classified_percent >= 99.999:
-        unclassified = 0.0
+        unclassified = 0
     if classified is None or unclassified is None:
         raise SystemExit(
             f"{path}: Kraken report must contain unclassified (taxid 0) and root (taxid 1) rows"
@@ -203,7 +241,7 @@ def select_features(features, mode, taxdump, drop_taxids):
 
 def sample_totals(samples, feature_ids, counts):
     return {
-        sample: sum(counts.get(fid, {}).get(sample, 0.0) for fid in feature_ids)
+        sample: sum(counts.get(fid, {}).get(sample, 0) for fid in feature_ids)
         for sample in samples
     }
 
@@ -216,10 +254,12 @@ def write_matrix(path, samples, features, counts, relative=False):
         for fid in features:
             row = [fid]
             for sample in samples:
-                value = counts.get(fid, {}).get(sample, 0.0)
+                count = counts.get(fid, {}).get(sample, 0)
                 if relative:
-                    value = value / totals[sample] if totals[sample] else 0.0
-                row.append(f"{value:.12g}")
+                    total = totals[sample]
+                    row.append(f"{count / total if total else 0.0:.12g}")
+                else:
+                    row.append(format_count(count))
             writer.writerow(row)
 
 
@@ -295,23 +335,23 @@ def write_sample_qc(
             row = dict(metadata[sample])
             row.update(
                 {
-                    "kraken_total_reads": format_value(total),
-                    "kraken_classified_reads": format_value(classified),
-                    "kraken_unclassified_reads": format_value(km.get("kraken_unclassified_reads")),
+                    "kraken_total_reads": format_count(total),
+                    "kraken_classified_reads": format_count(classified),
+                    "kraken_unclassified_reads": format_count(km.get("kraken_unclassified_reads")),
                     "kraken_classified_fraction": format_value(
                         ratio(classified, total) if classified is not None and total is not None else None
                     ),
-                    "bracken_total_reads": format_value(raw_total),
+                    "bracken_total_reads": format_count(raw_total),
                     "bracken_fraction_of_kraken_classified": format_value(
                         ratio(raw_total, classified) if classified is not None else None
                     ),
-                    "taxon_filter_retained_reads": format_value(filtered_total),
+                    "taxon_filter_retained_reads": format_count(filtered_total),
                     "taxon_filter_retained_fraction": format_value(ratio(filtered_total, raw_total)),
                     "raw_nonzero_features": sum(
-                        counts.get(fid, {}).get(sample, 0.0) > 0 for fid in raw_features
+                        counts.get(fid, {}).get(sample, 0) > 0 for fid in raw_features
                     ),
                     "filtered_nonzero_features": sum(
-                        counts.get(fid, {}).get(sample, 0.0) > 0 for fid in filtered_features
+                        counts.get(fid, {}).get(sample, 0) > 0 for fid in filtered_features
                     ),
                 }
             )
@@ -340,13 +380,15 @@ def main():
     counts = {}
     features = {}
     observed = []
-    for path in args.bracken_files:
+    # Sorted so the table is byte-identical regardless of the order in which
+    # the workflow hands over per-sample Bracken tables.
+    for path in sorted(args.bracken_files, key=lambda value: Path(value).name):
         sample, sample_counts, sample_features = read_bracken(path)
         observed.append(sample)
         features.update(sample_features)
         for fid, count in sample_counts.items():
             feature_counts = counts.setdefault(fid, {})
-            feature_counts[sample] = feature_counts.get(sample, 0.0) + count
+            feature_counts[sample] = feature_counts.get(sample, 0) + count
     require_one_to_one(samples, observed, "Bracken table")
 
     kraken_metrics = {}

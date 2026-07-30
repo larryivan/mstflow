@@ -26,8 +26,7 @@ process HOST_REMOVE_BWA {
         error "HOST_REMOVE_BWA requires a staged host FASTA/index bundle for ${id}"
     }
     def hostRef = hostFiles[0]
-    def kmerLength = (params.kraken2_kmer_len ?: 35) as int
-    def pairGap = Math.max((params.fragment_pair_gap ?: 100) as int, kmerLength)
+    def gzipLevel = params.fastq_gzip_level == null ? 6 : (params.fastq_gzip_level as int)
     def hostMinMapq = params.host_min_mapq == null ? 0 : (params.host_min_mapq as int)
     if (hostMinMapq < 0) {
         error "host_min_mapq must be non-negative"
@@ -48,8 +47,9 @@ process HOST_REMOVE_BWA {
         bwa samse "${hostRef}" "${id}.host_se.sai" "${seRead}" \
             2>> "${id}.host_removal.log" \
             | python3 "${fragment_helper}" filter-host-sam \
-                --sam - --output "${id}.unmapped_se.fq.gz" \
-                --minimum-mapq ${hostMinMapq} --stats "${id}.host_se.stats.tsv"
+                --sam - --output "${id}.dehosted_se.fq.gz" \
+                --minimum-mapq ${hostMinMapq} --stats "${id}.host_se.stats.tsv" \
+                --gzip-level ${gzipLevel}
 
         bwa aln -l 1024 -n 0.01 -o 2 -t ${task.cpus} \
             "${hostRef}" "${r1Read}" > "${id}.host_R1.sai" 2>> "${id}.host_removal.log"
@@ -58,16 +58,9 @@ process HOST_REMOVE_BWA {
         bwa sampe "${hostRef}" "${id}.host_R1.sai" "${id}.host_R2.sai" "${r1Read}" "${r2Read}" \
             2>> "${id}.host_removal.log" \
             | python3 "${fragment_helper}" filter-host-sam \
-                --sam - --output-r1 "${id}.unmapped_R1.fq.gz" --output-r2 "${id}.unmapped_R2.fq.gz" \
-                --minimum-mapq ${hostMinMapq} --stats "${id}.host_pair.stats.tsv"
-
-        # Count one ancient molecule once while retaining k-mer evidence from both
-        # unmerged mates; the N spacer blocks artificial cross-mate k-mers.
-        python3 "${fragment_helper}" combine \
-            --single "${id}.unmapped_se.fq.gz" \
-            --r1 "${id}.unmapped_R1.fq.gz" --r2 "${id}.unmapped_R2.fq.gz" \
-            --output "${id}.dehosted.fq.gz" --stats "${id}.host_normalized.stats.tsv" \
-            --minimum-usable-span 0 --kmer-length ${kmerLength} --gap-length ${pairGap}
+                --sam - --output-r1 "${id}.dehosted_R1.fq.gz" --output-r2 "${id}.dehosted_R2.fq.gz" \
+                --minimum-mapq ${hostMinMapq} --stats "${id}.host_pair.stats.tsv" \
+                --gzip-level ${gzipLevel}
 
         se_input=\$(awk -F '\t' '\$1 == "input_fragments" { print \$2 }' "${id}.host_se.stats.tsv")
         pe_input=\$(awk -F '\t' '\$1 == "input_fragments" { print \$2 }' "${id}.host_pair.stats.tsv")
@@ -75,8 +68,8 @@ process HOST_REMOVE_BWA {
         pe_retained=\$(awk -F '\t' '\$1 == "retained_fragments" { print \$2 }' "${id}.host_pair.stats.tsv")
         input_fragments=\$((se_input + pe_input))
         retained_fragments=\$((se_retained + pe_retained))
-        printf 'metric\tvalue\nhost_min_mapq\t%s\ninput_fragments\t%s\nretained_fragments\t%s\nremoved_host_fragments\t%s\nretained_single_fragments\t%s\nretained_paired_fragments\t%s\n' \
-            "${hostMinMapq}" "\$input_fragments" "\$retained_fragments" \
+        printf 'metric\tvalue\nhost_min_mapq\t%s\nfastq_gzip_level\t%s\ninput_fragments\t%s\nretained_fragments\t%s\nremoved_host_fragments\t%s\nretained_single_fragments\t%s\nretained_paired_fragments\t%s\n' \
+            "${hostMinMapq}" "${gzipLevel}" "\$input_fragments" "\$retained_fragments" \
             "\$((input_fragments - retained_fragments))" "\$se_retained" "\$pe_retained" \
             > "${id}.host_removal.fragment_qc.tsv"
 
@@ -94,12 +87,9 @@ process HOST_REMOVE_BWA {
         bwa sampe "${hostRef}" "${id}.host_R1.sai" "${id}.host_R2.sai" "${readList[0]}" "${readList[1]}" \
             2>> "${id}.host_removal.log" \
             | python3 "${fragment_helper}" filter-host-sam \
-                --sam - --output-r1 "${id}.unmapped_R1.fq.gz" --output-r2 "${id}.unmapped_R2.fq.gz" \
-                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv"
-        python3 "${fragment_helper}" combine \
-            --r1 "${id}.unmapped_R1.fq.gz" --r2 "${id}.unmapped_R2.fq.gz" \
-            --output "${id}.dehosted.fq.gz" --stats "${id}.host_normalized.stats.tsv" \
-            --minimum-usable-span 0 --kmer-length ${kmerLength} --gap-length ${pairGap}
+                --sam - --output-r1 "${id}.dehosted_R1.fq.gz" --output-r2 "${id}.dehosted_R2.fq.gz" \
+                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv" \
+                --gzip-level ${gzipLevel}
         version=\$(bwa 2>&1 | awk '/^Version:/ { print \$2; exit }' || true)
         [[ -n "\$version" ]] || version="unknown"
         printf '"${task.process}":\n    bwa: "%s"\n' "\$version" > "${id}.host_remove_bwa.versions.yml"
@@ -111,7 +101,8 @@ process HOST_REMOVE_BWA {
             2>> "${id}.host_removal.log" \
             | python3 "${fragment_helper}" filter-host-sam \
                 --sam - --output-r1 "${id}.dehosted_R1.fq.gz" --output-r2 "${id}.dehosted_R2.fq.gz" \
-                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv"
+                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv" \
+                --gzip-level ${gzipLevel}
         version=\$(bwa 2>&1 | awk '/^Version:/ { print \$2; exit }' || true)
         [[ -n "\$version" ]] || version="unknown"
         printf '"${task.process}":\n    bwa: "%s"\n' "\$version" > "${id}.host_remove_bwa.versions.yml"
@@ -125,7 +116,8 @@ process HOST_REMOVE_BWA {
             2>> "${id}.host_removal.log" \
             | python3 "${fragment_helper}" filter-host-sam \
                 --sam - --output "${id}.dehosted.fq.gz" \
-                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv"
+                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv" \
+                --gzip-level ${gzipLevel}
         version=\$(bwa 2>&1 | awk '/^Version:/ { print \$2; exit }' || true)
         [[ -n "\$version" ]] || version="unknown"
         printf '"${task.process}":\n    bwa: "%s"\n' "\$version" > "${id}.host_remove_bwa.versions.yml"
@@ -137,7 +129,8 @@ process HOST_REMOVE_BWA {
             2>> "${id}.host_removal.log" \
             | python3 "${fragment_helper}" filter-host-sam \
                 --sam - --output "${id}.dehosted.fq.gz" \
-                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv"
+                --minimum-mapq ${hostMinMapq} --stats "${id}.host_removal.fragment_qc.tsv" \
+                --gzip-level ${gzipLevel}
         version=\$(bwa 2>&1 | awk '/^Version:/ { print \$2; exit }' || true)
         [[ -n "\$version" ]] || version="unknown"
         printf '"${task.process}":\n    bwa: "%s"\n' "\$version" > "${id}.host_remove_bwa.versions.yml"
@@ -148,7 +141,13 @@ process HOST_REMOVE_BWA {
     def id = meta.id
     def readList = (reads instanceof List ? reads : [reads]).collect { read -> read.toString() }
     def hostMinMapq = params.host_min_mapq == null ? 0 : (params.host_min_mapq as int)
-    def stubReads = (meta.age_group == 'modern' && readList.size() == 2) ? """
+    // Keep ancient all_fragments as three biological files through clean QC.
+    // The Kraken task alone creates its temporary placeholder mates.
+    def stubReads = readList.size() == 3 ? """
+        printf '@${id}\\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\\n+\\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\\n' | gzip -c > ${id}.dehosted_se.fq.gz
+        printf '@${id}/1\\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\\n+\\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\\n' | gzip -c > ${id}.dehosted_R1.fq.gz
+        printf '@${id}/2\\nTGCATGCATGCATGCATGCATGCATGCATGCATGCATGCA\\n+\\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\\n' | gzip -c > ${id}.dehosted_R2.fq.gz
+        """ : readList.size() == 2 ? """
         printf '@${id}/1\\nACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\\n+\\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\\n' | gzip -c > ${id}.dehosted_R1.fq.gz
         printf '@${id}/2\\nTGCATGCATGCATGCATGCATGCATGCATGCATGCATGCA\\n+\\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\\n' | gzip -c > ${id}.dehosted_R2.fq.gz
         """ : """
@@ -157,7 +156,7 @@ process HOST_REMOVE_BWA {
     """
     ${stubReads}
     echo 'stub host removal' > ${id}.host_removal.log
-    printf 'metric\tvalue\nhost_min_mapq\t${hostMinMapq}\ninput_fragments\t1\nretained_fragments\t1\nremoved_host_fragments\t0\n' > ${id}.host_removal.fragment_qc.tsv
+    printf 'metric\tvalue\nhost_min_mapq\t${hostMinMapq}\nfastq_gzip_level\t${params.fastq_gzip_level}\ninput_fragments\t1\nretained_fragments\t1\nremoved_host_fragments\t0\n' > ${id}.host_removal.fragment_qc.tsv
     printf '"${task.process}":\n    stub: "true"\n' > ${id}.host_remove_bwa.versions.yml
     """
 }

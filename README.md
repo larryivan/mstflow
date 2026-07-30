@@ -18,7 +18,17 @@ metadata.tsv
   -> MultiQC and provenance reports
 ```
 
-Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`, matching the molecule-level protocol in `steps.md`. The excluded singleton and unmerged counts are reported. The optional `all_fragments` mode retains all complete molecular fragments (collapsed reads and complete unmerged pairs), preserves pairing through host removal, and converts each surviving pair into one classification record separated by a non-k-mer-forming `N` gap. Orphan singletons are quantified but excluded, matching modern paired-end handling.
+Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`, matching the molecule-level protocol in `steps.md`. The excluded singleton and unmerged counts are reported. The optional `all_fragments` mode retains all complete molecular fragments (collapsed reads and complete unmerged pairs), preserves pairing through host removal, and submits each surviving fragment as one native Kraken2 `--paired` record. Orphan singletons are quantified but excluded, matching modern paired-end handling.
+
+### Why `all_fragments` uses native paired input
+
+Kraken2 2.1.6 counts every minimizer position in `total_kmers`, including the ambiguous positions produced by an `N` run, and subtracts only its own mate-pair and reading-frame markers (`src/classify.cc`, `ClassifySequence`). Because `required_score = ceil(confidence * total_kmers)`, concatenating two 40 bp mates with a 100 `N` spacer raises the denominator from 12 native paired positions to 146, and the confidence requirement at 0.05 from 1 hit to 8. Short ancient fragments that native `--paired` classifies are therefore lost. MSTFlow now submits both mates natively and gives each collapsed single-end fragment a placeholder mate shorter than `kraken2_kmer_len`, which contributes exactly zero minimizer positions and so reproduces native single-end classification. Placeholder mates are excluded from informative length, k-mer-equivalent length, and Bracken read-length statistics.
+
+`kraken2_confidence`'s effective denominator is recorded per sample as `median_kraken_confidence_denominator` in `*.kraken2.read_length.tsv`.
+
+`fragment_pair_gap` is retained for backward compatibility. The workflow no longer concatenates mates, so it now affects only the deprecated `combine` subcommand of `bin/mstflow_fragment_tools.py`.
+
+`--check-names` is not a Kraken2 2.1.6 option. Its Perl wrapper parses long options with `Getopt::Long` and never inspects the parse result, so an unrecognised long option prints `Unknown option: <name>` and classification still succeeds with exit status 0. MSTFlow therefore rejects `--check-names` during parameter validation, verifies paired record counts, normalised mate identifiers, and mate ordering in `bin/mstflow_fragment_tools.py` before Kraken2 starts, and fails the task if Kraken2 reports that it ignored any option.
 
 ## Requirements
 
@@ -121,6 +131,7 @@ taxon_filter: prokaryote
 taxdump: /absolute/path/to/taxdump
 
 ancient_pe_mode: collapsed_only
+fastq_gzip_level: 6
 publish_intermediates: false
 
 run_sourcetracker2: false
@@ -151,6 +162,8 @@ If a valid Kraken report yields no estimate at the requested Bracken rank and `b
 `host_action: remove` sends the sample through BWA host subtraction. `host_action: skip` bypasses BWA and passes the preprocessed reads directly to clean-read QC and classification; skip rows must use `host_ref: NA`. Manifests that omit `host_action` remain backward compatible and default to `remove`. For a new mixed host-aware run, set `require_explicit_host_action: true` so every row must declare its policy.
 
 Kraken memory depends on the selected database. The CPU, memory, time, and concurrency defaults are explicit and should be overridden after measuring the intended database and executor. Host removal is capped at four concurrent tasks by default to control repeated index I/O.
+
+`fastq_gzip_level` (0-9, default 6) sets the compression level for FASTQ written by `bin/mstflow_fragment_tools.py`, matching the AdapterRemoval and `gzip(1)` defaults instead of Python's level 9. It changes only the compressed representation: decompressed FASTQ content, fragment membership, and counts are unaffected. Lower it towards 1 to trade roughly 10% more scratch space for markedly faster host-removal and Kraken input writes; level 0 stores without compressing. FASTQ written by the helper pins the GZIP header timestamp, so repeated writes to the same output basename are byte-identical; different basenames remain encoded in the GZIP header.
 
 SourceTracker defaults to biological-unit aggregation, filtered taxa, and explicit QC. Complete units are validated and filtered as a whole, so a conflicting or poor lane cannot leave a partial unit. `control` and `holdout` panel roles are excluded before modeling; clear or replace `sourcetracker2_exclude_panel_roles` only in a separately labelled validation run when one of those roles is intentionally needed. Assignments abstain when Unknown is at least 0.5, the strongest known source is below 0.5, the top sources tie, or their margin is below 0.05. SourceTracker2 2.0.1 is run in one process with a recorded `sourcetracker2_seed` for reproducibility. Set `sourcetracker2_loo: true` in a separately labelled, source-only validation run, set `sourcetracker2_source_rarefaction_depth: 0`, and retain at least two independent analysis units per source environment. In LOO, MSTFlow deterministically rarefies each unit to `sourcetracker2_sink_rarefaction_depth` before SourceTracker, then disables both buggy upstream rarefaction paths.
 

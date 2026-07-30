@@ -50,4 +50,5 @@ sourcetracker2_seed: 1
 multiqc_title: mstflow tiny stub
 ancient_pe_mode: collapsed_only
 fragment_pair_gap: 100
+fastq_gzip_level: 6
 publish_intermediates: false

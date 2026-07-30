@@ -8,9 +8,13 @@ import random
 import re
 import sys
 from collections import OrderedDict
+from decimal import Decimal, InvalidOperation
 
 
 NA_VALUES = {"", "NA", "N/A", "NONE", "NULL"}
+# A read count wider than a 128-bit integer is not physically obtainable; the
+# bound exists so an implausible magnitude fails fast instead of being expanded.
+MAX_COUNT_DIGITS = 38
 CONSISTENT_AGGREGATION_FIELDS = (
     "source_sink",
     "model_source_env",
@@ -108,6 +112,39 @@ def finite_nonnegative(value, context):
     return number
 
 
+def exact_count(value, context):
+    """Parse a feature count as an exact integer.
+
+    Accepts ``8``, ``8.0``, and ``8e0``; rejects fractional, negative, NaN, and
+    infinite values. SourceTracker2 subsamples integer count vectors, so a
+    fractional cell must fail loudly instead of being silently rounded.
+    """
+    text = "" if value is None else str(value).strip()
+    try:
+        number = Decimal(text)
+    except (InvalidOperation, ValueError):
+        raise SystemExit(f"{context} is not numeric: {value!r}")
+    if not number.is_finite() or number < 0:
+        raise SystemExit(f"{context} must be finite and non-negative: {value!r}")
+    # Bound the magnitude before int() materialises the digits. Decimal treats
+    # a token such as "1e999999999" as finite, and expanding it would allocate a
+    # billion-digit integer inside a non-interruptible C call; the previous
+    # float-based parser collapsed it to inf and rejected it cleanly.
+    if number.adjusted() >= MAX_COUNT_DIGITS:
+        raise SystemExit(
+            f"{context} needs more than {MAX_COUNT_DIGITS} digits "
+            f"and cannot be a read count: {value!r}"
+        )
+    if number != number.to_integral_value():
+        raise SystemExit(f"{context} must be a whole read count: {value!r}")
+    return int(number)
+
+
+def format_count(value):
+    """Render a count exactly, with no float rounding or exponent notation."""
+    return "NA" if value is None else str(int(value))
+
+
 def read_counts(path):
     with open(path, newline="") as handle:
         reader = csv.reader(handle, delimiter="\t")
@@ -142,7 +179,9 @@ def read_counts(path):
                 raise SystemExit(f"{path}:{line_no}: duplicate feature ID '{feature}'")
             features.append(feature)
             matrix[feature] = {
-                sample: finite_nonnegative(value, f"{path}:{line_no}:{sample}")
+                sample: exact_count(
+                    value, f"{path}:{line_no}: feature '{feature}', sample '{sample}'"
+                )
                 for sample, value in zip(samples, row[1:])
             }
     return samples, features, matrix
@@ -176,24 +215,26 @@ def read_feature_sample_qc(path):
     return by_sample
 
 
-def optional_qc_number(row, field):
+def optional_qc_number(row, field, integral=False):
     value = norm(row.get(field))
     if is_na(value):
         return None
-    return finite_nonnegative(value, f"feature QC field {field}")
+    context = f"feature QC field {field} for sample '{norm(row.get('sample_id')) or '?'}'"
+    return exact_count(value, context) if integral else finite_nonnegative(value, context)
 
 
-def complete_sum(rows, field):
-    values = [optional_qc_number(row, field) for row in rows]
+def complete_sum(rows, field, integral=False):
+    values = [optional_qc_number(row, field, integral) for row in rows]
     return None if any(value is None for value in values) else sum(values)
 
 
 def aggregate_feature_qc(members, feature_qc):
     rows = [feature_qc[sample] for sample in members]
-    kraken_total = complete_sum(rows, "kraken_total_reads")
-    kraken_classified = complete_sum(rows, "kraken_classified_reads")
-    bracken_total = complete_sum(rows, "bracken_total_reads")
-    retained_reads = complete_sum(rows, "taxon_filter_retained_reads")
+    # Read counts stay exact integers; only the derived fractions are floats.
+    kraken_total = complete_sum(rows, "kraken_total_reads", integral=True)
+    kraken_classified = complete_sum(rows, "kraken_classified_reads", integral=True)
+    bracken_total = complete_sum(rows, "bracken_total_reads", integral=True)
+    retained_reads = complete_sum(rows, "taxon_filter_retained_reads", integral=True)
     classified_fraction = (
         kraken_classified / kraken_total
         if kraken_classified is not None and kraken_total is not None and kraken_total > 0
@@ -294,8 +335,13 @@ def sample_total(sample, features, matrix):
 
 
 def rarefy_counts(values, depth, seed, group_id):
-    """Subsample one analysis unit without expanding its count vector."""
-    integer_values = [math.ceil(value) for value in values]
+    """Subsample one analysis unit without expanding its count vector.
+
+    The input vector is already exact integers (see ``exact_count``), so no
+    rounding happens here; rounding up would have invented reads that the
+    profiler never observed.
+    """
+    integer_values = list(values)
     total = sum(integer_values)
     if depth == 0:
         return integer_values
@@ -401,6 +447,21 @@ def format_number(value):
     return "NA" if value is None else f"{value:.12g}"
 
 
+def qc_value(feature_qc, field, count=False):
+    """Render one aggregated QC field, mapping undefined values to NA.
+
+    Values arriving as strings are already normalised by the upstream sample-QC
+    writer and are passed through unchanged; only aggregated numbers computed
+    here are formatted. Counts are rendered exactly, never in exponent form.
+    """
+    value = feature_qc.get(field)
+    if value is None:
+        return "NA"
+    if isinstance(value, str):
+        return value
+    return format_count(value) if count else format_number(value)
+
+
 def make_qc_row(
     analysis_label,
     sample,
@@ -431,12 +492,17 @@ def make_qc_row(
         "host_action": first_present(row, "host_action") or "NA",
         "host_group": canonical_group_value(row, "host_group") or "NA",
         "taxon_scope": taxon_scope,
-        "kraken_classified_fraction": feature_qc.get("kraken_classified_fraction", "NA"),
-        "bracken_total_reads": feature_qc.get("bracken_total_reads", "NA"),
-        "taxon_filter_retained_reads": feature_qc.get("taxon_filter_retained_reads", "NA"),
-        "taxon_filter_retained_fraction": feature_qc.get("taxon_filter_retained_fraction", "NA"),
-        "input_total_count": format_number(input_total),
-        "analysis_total_count": format_number(analysis_total),
+        # Aggregated QC is undefined (None) whenever a denominator is zero, for
+        # example a preserved zero-estimate Bracken sample. Report that as NA
+        # rather than letting csv write an indistinguishable empty cell.
+        "kraken_classified_fraction": qc_value(feature_qc, "kraken_classified_fraction"),
+        "bracken_total_reads": qc_value(feature_qc, "bracken_total_reads", count=True),
+        "taxon_filter_retained_reads": qc_value(
+            feature_qc, "taxon_filter_retained_reads", count=True
+        ),
+        "taxon_filter_retained_fraction": qc_value(feature_qc, "taxon_filter_retained_fraction"),
+        "input_total_count": format_count(input_total),
+        "analysis_total_count": format_count(analysis_total),
         "required_rarefaction_depth": required_depth,
         "aggregation_n": len(members) if members else 0,
         "aggregation_members": ",".join(members) if members else "NA",
@@ -659,7 +725,7 @@ def main():
         writer.writerow(["#OTU ID", *final_groups])
         for feature in retained_features:
             writer.writerow(
-                [feature, *[format_number(aggregated[feature][group]) for group in final_groups]]
+                [feature, *[format_count(aggregated[feature][group]) for group in final_groups]]
             )
 
     reserved_mapping_fields = {

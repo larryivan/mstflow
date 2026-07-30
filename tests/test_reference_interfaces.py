@@ -554,6 +554,124 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertEqual(qc["source1"]["bracken_total_reads"], "8")
             self.assertEqual(qc["source1"]["raw_nonzero_features"], "1")
 
+    def _integer_count_fixture(self, root, new_est_reads):
+        metadata = root / "metadata.tsv"
+        write_tsv(metadata, ["sample_id"], [{"sample_id": "one"}, {"sample_id": "two"}])
+        bracken_header = [
+            "name",
+            "taxonomy_id",
+            "taxonomy_lvl",
+            "kraken_assigned_reads",
+            "added_reads",
+            "new_est_reads",
+            "fraction_total_reads",
+        ]
+        tables = []
+        for index, sample in enumerate(("one", "two")):
+            table = root / f"{sample}.bracken.tsv"
+            write_tsv(
+                table,
+                bracken_header,
+                [
+                    {
+                        "name": "Bacteria",
+                        "taxonomy_id": "2",
+                        "taxonomy_lvl": "D",
+                        "kraken_assigned_reads": 5,
+                        "added_reads": 0,
+                        "new_est_reads": new_est_reads[index],
+                        "fraction_total_reads": 1,
+                    }
+                ],
+            )
+            tables.append(table)
+        return metadata, tables
+
+    def test_bracken_counts_are_exact_integers_and_reject_fractions(self):
+        """Counts must survive as exact integers, and fractions must fail loudly."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # 8, 8.0 and 8e0 are all the integer 8; a huge count must not become
+            # exponent notation, which %.12g would have produced.
+            metadata, tables = self._integer_count_fixture(root, ["8.0", "9007199254740993"])
+            run_script(
+                "build_feature_table.py",
+                "--metadata", metadata,
+                "--prefix", "bracken_G",
+                "--taxon-filter", "none",
+                *tables,
+                cwd=root,
+            )
+            with open(root / "bracken_G_counts.tsv", newline="") as handle:
+                self.assertEqual(
+                    list(csv.reader(handle, delimiter="\t")),
+                    [
+                        ["#OTU ID", "one", "two"],
+                        ["taxid_2__Bacteria", "8", "9007199254740993"],
+                    ],
+                )
+
+            metadata, tables = self._integer_count_fixture(root, ["8e0", "3"])
+            run_script(
+                "build_feature_table.py",
+                "--metadata", metadata,
+                "--prefix", "bracken_G",
+                "--taxon-filter", "none",
+                *tables,
+                cwd=root,
+            )
+            counts = read_tsv(root / "bracken_G_counts.tsv")[0]
+            self.assertEqual(counts["one"], "8")
+
+            # Relative abundance stays floating point.
+            relative = read_tsv(root / "bracken_G_relative_abundance.tsv")[0]
+            self.assertEqual(relative["one"], "1")
+
+            # "1e999999999" is finite to Decimal but would expand to a
+            # billion-digit integer inside a non-interruptible C call. It must
+            # be rejected, not materialised.
+            for bad in ("", "8.5", "-1", "nan", "inf", "eight", "1e999999999"):
+                metadata, tables = self._integer_count_fixture(root, [bad, "3"])
+                failed = run_script(
+                    "build_feature_table.py",
+                    "--metadata", metadata,
+                    "--prefix", "bad",
+                    "--taxon-filter", "none",
+                    *tables,
+                    cwd=root,
+                    check=False,
+                )
+                self.assertNotEqual(failed.returncode, 0, bad)
+                # Failures identify the file, the line, the field and the sample.
+                self.assertIn("one.bracken.tsv:2:new_est_reads", failed.stderr, bad)
+                self.assertIn("sample one", failed.stderr, bad)
+
+    def test_feature_table_is_invariant_to_bracken_file_order(self):
+        """Terminal collect() order must not change any published table."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata, tables = self._integer_count_fixture(root, ["8", "3"])
+            outputs = [
+                "bracken_G_counts.tsv",
+                "bracken_G_relative_abundance.tsv",
+                "bracken_G_features.tsv",
+                "bracken_G_none_counts.tsv",
+                "bracken_G_none_sample_qc.tsv",
+            ]
+            digests = []
+            for order in (tables, list(reversed(tables))):
+                run_script(
+                    "build_feature_table.py",
+                    "--metadata", metadata,
+                    "--prefix", "bracken_G",
+                    "--taxon-filter", "none",
+                    *order,
+                    cwd=root,
+                )
+                digests.append({name: (root / name).read_bytes() for name in outputs})
+            self.assertEqual(digests[0], digests[1])
+            self.assertEqual(read_tsv(root / "bracken_G_counts.tsv")[0]["one"], "8")
+
     def _source_tracker_fixture(self, root):
         metadata = root / "metadata.tsv"
         fields = [
@@ -668,6 +786,73 @@ class ReferenceInterfaceTests(unittest.TestCase):
             with open(root / "st_counts.tsv", newline="") as handle:
                 header = next(csv.reader(handle, delimiter="\t"))
             self.assertEqual(header, ["#OTU ID", "soil_unit", "sink_unit"])
+
+    def test_prepare_reports_undefined_qc_as_na_and_rejects_fractional_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata, counts, feature_qc = self._source_tracker_fixture(root)
+
+            # A preserved zero-estimate Bracken sample has no defined retained
+            # fraction. That must be reported as NA, not as an empty cell.
+            qc_rows = read_tsv(feature_qc)
+            for row in qc_rows:
+                if row["sample_id"] == "sink1":
+                    row["bracken_total_reads"] = "0"
+                    row["taxon_filter_retained_reads"] = "0"
+                    row["taxon_filter_retained_fraction"] = "NA"
+            write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
+            # Promote the blank to the surviving sink so the run still completes
+            # while the zero-estimate sink is excluded on undefined QC.
+            metadata_rows = read_tsv(metadata)
+            for row in metadata_rows:
+                if row["sample_id"] == "blank1":
+                    row["panel_role"] = "target"
+                    row["source_sink"] = "sink"
+            write_tsv(metadata, list(metadata_rows[0]), metadata_rows)
+            run_script(
+                "prepare_sourcetracker2_inputs.py",
+                "--counts", counts,
+                "--metadata", metadata,
+                "--feature-sample-qc", feature_qc,
+                "--output-counts", root / "st_counts.tsv",
+                "--output-map", root / "st_map.tsv",
+                "--summary", root / "summary.tsv",
+                "--sample-qc", root / "st_qc.tsv",
+                "--aggregate-by", "unit_id",
+                "--exclude-panel-role", "control,holdout",
+                "--min-taxon-filter-retained-reads", "0",
+                "--min-taxon-filter-retained-fraction", "0",
+            )
+            qc = {row["input_sample_id"]: row for row in read_tsv(root / "st_qc.tsv")}
+            self.assertEqual(qc["sink1"]["taxon_filter_retained_fraction"], "NA")
+            self.assertEqual(qc["sink1"]["bracken_total_reads"], "0")
+            # Counts stay exact integers, never 1500.0 or 1.5e+03.
+            self.assertEqual(qc["soil1"]["taxon_filter_retained_reads"], "3000")
+            self.assertEqual(qc["soil1"]["input_total_count"], "700")
+
+            fractional = root / "fractional_counts.tsv"
+            with open(fractional, "w", newline="") as handle:
+                writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+                writer.writerow(
+                    ["#OTU ID", "bone1", "bone2", "soil1", "soil2", "sink1", "blank1"]
+                )
+                writer.writerow(["taxid_2__Bacteria", 600, 600, "700.5", 800, 1500, 2000])
+            failed = run_script(
+                "prepare_sourcetracker2_inputs.py",
+                "--counts", fractional,
+                "--metadata", metadata,
+                "--feature-sample-qc", feature_qc,
+                "--output-counts", root / "bad_counts.tsv",
+                "--output-map", root / "bad_map.tsv",
+                "--summary", root / "bad_summary.tsv",
+                "--aggregate-by", "unit_id",
+                check=False,
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("fractional_counts.tsv:2", failed.stderr)
+            self.assertIn("taxid_2__Bacteria", failed.stderr)
+            self.assertIn("soil1", failed.stderr)
+            self.assertIn("whole read count", failed.stderr)
 
     def test_prepare_loo_does_not_require_sink(self):
         with tempfile.TemporaryDirectory() as directory:

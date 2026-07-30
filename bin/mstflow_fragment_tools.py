@@ -2,7 +2,14 @@
 """Validate, normalise, and summarise FASTQ fragments for MSTFlow.
 
 The helper deliberately treats a paired-end fragment as one classification unit.
-When pairs are combined, an N spacer prevents artificial k-mers spanning R1/R2.
+
+Mixed collapsed/unmerged ancient fragments are emitted as *native* Kraken2
+paired input (``--paired``).  A single-end fragment is paired with a dummy mate
+shorter than the Kraken2 k-mer length, which Kraken2 2.1.6 scans into exactly
+zero minimizer positions, so the dummy cannot change the call, the confidence
+denominator, the informative length, the k-mer-equivalent length, or the
+Bracken read-length distribution.  See ``kraken_confidence_denominator`` below
+for why the previous ``R1 + N*gap + R2`` concatenation was not equivalent.
 """
 
 from __future__ import annotations
@@ -10,6 +17,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import io
 import re
 import sys
 from collections import Counter
@@ -22,15 +30,28 @@ BRACKEN_DISTRIBUTION = re.compile(r"^database(\d+)mers\.kmer_distrib$")
 PAIR_LENGTH_TAG = re.compile(
     r"(?:^|\s)mstflow_internal_pair_lengths=(\d+),(\d+)(?:\s|$)"
 )
+DUMMY_MATE_MARKER = "mstflow_internal_dummy_mate=1"
+DUMMY_MATE_TAG = re.compile(r"(?:^|\s)mstflow_internal_dummy_mate=1(?:\s|$)")
+DEFAULT_GZIP_LEVEL = 6
 REVERSE_COMPLEMENT = str.maketrans(
     "ACGTRYKMSWBDHVNacgtrykmswbdhvn",
     "TGCAYRMKSWVHDBNtgcayrmkswvhdbn",
 )
 
 
-def open_text(path: str, mode: str):
+def open_text(path: str, mode: str, gzip_level: int = DEFAULT_GZIP_LEVEL):
+    """Open a plain or gzipped FASTQ as text.
+
+    ``mtime=0`` is required: ``gzip.open`` stamps ``time.time()`` into the GZIP
+    header, so two identical runs would otherwise produce different bytes for
+    identical decompressed content.  ``gzip_level`` only affects the compressed
+    representation, never the decompressed bytes.
+    """
     if str(path).endswith(".gz"):
-        return gzip.open(path, mode + "t", encoding="utf-8", newline="")
+        if not 0 <= gzip_level <= 9:
+            raise ValueError(f"gzip level must be between 0 and 9: {gzip_level}")
+        binary = gzip.GzipFile(path, mode + "b", compresslevel=gzip_level, mtime=0)
+        return io.TextIOWrapper(binary, encoding="utf-8", newline="")
     return open(path, mode, encoding="utf-8", newline="")
 
 
@@ -156,9 +177,12 @@ def filter_host_sam(args):
     input_fragments = retained_fragments = removed_fragments = 0
     confident_mate1 = confident_mate2 = 0
     with ExitStack() as stack:
-        output = stack.enter_context(open_text(args.output, "w")) if args.output else None
-        output_r1 = stack.enter_context(open_text(args.output_r1, "w")) if args.output_r1 else None
-        output_r2 = stack.enter_context(open_text(args.output_r2, "w")) if args.output_r2 else None
+        def writer(path):
+            return stack.enter_context(open_text(path, "w", args.gzip_level)) if path else None
+
+        output = writer(args.output)
+        output_r1 = writer(args.output_r1)
+        output_r2 = writer(args.output_r2)
 
         for qname, alignments in sam_groups(args.sam):
             primary = [
@@ -197,6 +221,7 @@ def filter_host_sam(args):
 
     metrics = {
         "host_min_mapq": args.minimum_mapq,
+        "fastq_gzip_level": args.gzip_level,
         "input_fragments": input_fragments,
         "retained_fragments": retained_fragments,
         "removed_host_fragments": removed_fragments,
@@ -242,12 +267,11 @@ def fragment_metrics(
     return bases, equivalent_length, read_lengths
 
 
-def bracken_lengths_for_single_record(record, default_lengths):
+def internal_pair_lengths(record):
     """Recover original mate lengths from an internally combined FASTQ record."""
     header = record[0]
-    marker = "mstflow_internal_pair_lengths="
-    if marker not in header:
-        return default_lengths
+    if "mstflow_internal_pair_lengths=" not in header:
+        return None
     match = PAIR_LENGTH_TAG.search(header)
     if not match:
         raise ValueError(f"malformed internal paired-length marker in FASTQ header: {header!r}")
@@ -255,6 +279,88 @@ def bracken_lengths_for_single_record(record, default_lengths):
     if any(length <= 0 for length in lengths):
         raise ValueError(f"non-positive internal paired-length marker in FASTQ header: {header!r}")
     return lengths
+
+
+def bracken_lengths_for_single_record(record, default_lengths):
+    """Backward-compatible helper retained for external callers."""
+    lengths = internal_pair_lengths(record)
+    return default_lengths if lengths is None else lengths
+
+
+def is_dummy_mate(record) -> bool:
+    """True for a synthesized sub-k-mer placeholder mate, never a sequenced read."""
+    header = record[0]
+    return DUMMY_MATE_MARKER in header and DUMMY_MATE_TAG.search(header) is not None
+
+
+def bracken_read_lengths_for_fragment(records) -> tuple[int, ...]:
+    """Bracken ``-r`` observations for one fragment: one per sequenced mate.
+
+    Synthesized dummy mates are excluded, so pairing a single-end fragment with
+    a placeholder cannot move the Bracken read-length distribution.
+    """
+    lengths: list[int] = []
+    for record in records:
+        if is_dummy_mate(record):
+            continue
+        recovered = internal_pair_lengths(record)
+        if recovered is None:
+            lengths.append(len(record[1]))
+        else:
+            lengths.extend(recovered)
+    return tuple(lengths)
+
+
+def kraken_confidence_denominator(records, kmer_length: int) -> int:
+    """Kraken2 2.1.6 ``total_kmers`` for one classification record.
+
+    Verified against kraken2-2.1.6 ``src/classify.cc`` ``ClassifySequence()``:
+    every minimizer position is pushed onto ``taxa`` including
+    ``AMBIGUOUS_SPAN_TAXON`` positions, and only the mate-pair and
+    reading-frame markers are subtracted (lines 827-842).  A sequence therefore
+    contributes ``max(0, length - k + 1)`` positions whether or not it contains
+    ambiguous bases, and a mate shorter than k contributes exactly zero.
+    ``required_score = ceil(confidence * total_kmers)`` in ``ResolveTree()``.
+    """
+    return sum(max(0, len(record[1]) - kmer_length + 1) for record in records)
+
+
+def dummy_mate_for(record, length: int, base: str = "N", quality: str = "!"):
+    """Build a placeholder mate that shares the fragment ID of ``record``."""
+    if length <= 0:
+        raise ValueError("dummy mate length must be positive")
+    return (
+        f"@{canonical_read_id(record[0])} {DUMMY_MATE_MARKER}",
+        base * length,
+        "+",
+        quality * length,
+    )
+
+
+class FragmentMetrics:
+    """Per-fragment distributions shared by every helper subcommand."""
+
+    def __init__(self, kmer_length: int):
+        self.kmer_length = kmer_length
+        self.informative_lengths = Counter()
+        self.equivalent_lengths = Counter()
+        self.bracken_read_lengths = Counter()
+        self.confidence_denominators = Counter()
+
+    def add(self, sequences, records):
+        """Account one retained fragment.
+
+        ``sequences`` are the sequenced bases used for informative/k-mer
+        statistics; ``records`` are the FASTQ records actually submitted to
+        Kraken2 for this fragment.
+        """
+        informative, equivalent, _ = fragment_metrics(sequences, self.kmer_length)
+        self.informative_lengths[informative] += 1
+        self.equivalent_lengths[equivalent] += 1
+        self.bracken_read_lengths.update(bracken_read_lengths_for_fragment(records))
+        self.confidence_denominators[
+            kraken_confidence_denominator(records, self.kmer_length)
+        ] += 1
 
 
 def summary_metrics(
@@ -267,6 +373,7 @@ def summary_metrics(
     informative_lengths: Counter,
     equivalent_lengths: Counter,
     bracken_read_lengths: Counter,
+    confidence_denominators: Counter,
     minimum_usable_span: int,
     kmer_length: int,
 ):
@@ -311,6 +418,10 @@ def summary_metrics(
         "mean_kmer_equivalent_read_length": distribution_mean(equivalent_lengths),
         "median_bracken_read_length": distribution_median(bracken_read_lengths),
         "mean_bracken_read_length": distribution_mean(bracken_read_lengths),
+        # Kraken2's confidence denominator for the records this stage submits.
+        # required_score = ceil(kraken2_confidence * this value).
+        "median_kraken_confidence_denominator": distribution_median(confidence_denominators),
+        "mean_kraken_confidence_denominator": distribution_mean(confidence_denominators),
     }
     return metrics
 
@@ -330,10 +441,8 @@ def keep_fragment(sequences: tuple[str, ...], minimum_span: int) -> bool:
 
 def prepare_single(args):
     input_single = retained_single = dropped = 0
-    informative_lengths = Counter()
-    equivalent_lengths = Counter()
-    bracken_read_lengths = Counter()
-    with open_text(args.output, "w") as output:
+    metrics = FragmentMetrics(args.kmer_length)
+    with open_text(args.output, "w", args.gzip_level) as output:
         for path in args.single:
             for record in fastq_records(path):
                 input_single += 1
@@ -343,36 +452,31 @@ def prepare_single(args):
                     continue
                 write_record(output, record)
                 retained_single += 1
-                informative, equivalent, read_lengths = fragment_metrics(
-                    sequences, args.kmer_length
-                )
-                read_lengths = bracken_lengths_for_single_record(record, read_lengths)
-                informative_lengths[informative] += 1
-                equivalent_lengths[equivalent] += 1
-                bracken_read_lengths.update(read_lengths)
-    metrics = summary_metrics(
-        input_single=input_single,
-        input_paired=0,
-        retained_single=retained_single,
-        retained_paired=0,
-        dropped_short=dropped,
-        informative_lengths=informative_lengths,
-        equivalent_lengths=equivalent_lengths,
-        bracken_read_lengths=bracken_read_lengths,
-        minimum_usable_span=args.minimum_usable_span,
-        kmer_length=args.kmer_length,
+                metrics.add(sequences, (record,))
+    write_metrics(
+        args.stats,
+        summary_metrics(
+            input_single=input_single,
+            input_paired=0,
+            retained_single=retained_single,
+            retained_paired=0,
+            dropped_short=dropped,
+            informative_lengths=metrics.informative_lengths,
+            equivalent_lengths=metrics.equivalent_lengths,
+            bracken_read_lengths=metrics.bracken_read_lengths,
+            confidence_denominators=metrics.confidence_denominators,
+            minimum_usable_span=args.minimum_usable_span,
+            kmer_length=args.kmer_length,
+        ),
     )
-    write_metrics(args.stats, metrics)
 
 
 def prepare_paired(args):
     input_paired = retained_paired = dropped = 0
-    informative_lengths = Counter()
-    equivalent_lengths = Counter()
-    bracken_read_lengths = Counter()
+    metrics = FragmentMetrics(args.kmer_length)
     with ExitStack() as stack:
-        output_r1 = stack.enter_context(open_text(args.output_r1, "w"))
-        output_r2 = stack.enter_context(open_text(args.output_r2, "w"))
+        output_r1 = stack.enter_context(open_text(args.output_r1, "w", args.gzip_level))
+        output_r2 = stack.enter_context(open_text(args.output_r2, "w", args.gzip_level))
         for _, r1, r2 in paired_records(args.r1, args.r2):
             input_paired += 1
             sequences = (r1[1], r2[1])
@@ -382,33 +486,37 @@ def prepare_paired(args):
             write_record(output_r1, r1)
             write_record(output_r2, r2)
             retained_paired += 1
-            informative, equivalent, read_lengths = fragment_metrics(sequences, args.kmer_length)
-            informative_lengths[informative] += 1
-            equivalent_lengths[equivalent] += 1
-            bracken_read_lengths.update(read_lengths)
-    metrics = summary_metrics(
-        input_single=0,
-        input_paired=input_paired,
-        retained_single=0,
-        retained_paired=retained_paired,
-        dropped_short=dropped,
-        informative_lengths=informative_lengths,
-        equivalent_lengths=equivalent_lengths,
-        bracken_read_lengths=bracken_read_lengths,
-        minimum_usable_span=args.minimum_usable_span,
-        kmer_length=args.kmer_length,
+            metrics.add(sequences, (r1, r2))
+    write_metrics(
+        args.stats,
+        summary_metrics(
+            input_single=0,
+            input_paired=input_paired,
+            retained_single=0,
+            retained_paired=retained_paired,
+            dropped_short=dropped,
+            informative_lengths=metrics.informative_lengths,
+            equivalent_lengths=metrics.equivalent_lengths,
+            bracken_read_lengths=metrics.bracken_read_lengths,
+            confidence_denominators=metrics.confidence_denominators,
+            minimum_usable_span=args.minimum_usable_span,
+            kmer_length=args.kmer_length,
+        ),
     )
-    write_metrics(args.stats, metrics)
 
 
 def combine_fragments(args):
+    """Deprecated single-record concatenation, retained for external callers.
+
+    MSTFlow no longer classifies concatenated mates: Kraken2 2.1.6 counts the
+    ambiguous spacer positions in ``total_kmers``, which inflates the
+    confidence requirement.  Use ``pair-fragments`` instead.
+    """
     input_single = input_paired = retained_single = retained_paired = dropped = 0
-    informative_lengths = Counter()
-    equivalent_lengths = Counter()
-    bracken_read_lengths = Counter()
+    metrics = FragmentMetrics(args.kmer_length)
     spacer = "N" * args.gap_length
     spacer_quality = "!" * args.gap_length
-    with open_text(args.output, "w") as output:
+    with open_text(args.output, "w", args.gzip_level) as output:
         for path in args.single:
             for record in fastq_records(path):
                 input_single += 1
@@ -418,13 +526,7 @@ def combine_fragments(args):
                     continue
                 write_record(output, record)
                 retained_single += 1
-                informative, equivalent, read_lengths = fragment_metrics(
-                    sequences, args.kmer_length
-                )
-                read_lengths = bracken_lengths_for_single_record(record, read_lengths)
-                informative_lengths[informative] += 1
-                equivalent_lengths[equivalent] += 1
-                bracken_read_lengths.update(read_lengths)
+                metrics.add(sequences, (record,))
 
         if bool(args.r1) != bool(args.r2):
             raise ValueError("--r1 and --r2 must be provided together")
@@ -444,33 +546,94 @@ def combine_fragments(args):
                 )
                 write_record(output, combined)
                 retained_paired += 1
-                informative, equivalent, read_lengths = fragment_metrics(
-                    sequences, args.kmer_length
-                )
-                informative_lengths[informative] += 1
-                equivalent_lengths[equivalent] += 1
-                bracken_read_lengths.update(read_lengths)
+                metrics.add(sequences, (combined,))
 
-    metrics = summary_metrics(
-        input_single=input_single,
-        input_paired=input_paired,
-        retained_single=retained_single,
-        retained_paired=retained_paired,
-        dropped_short=dropped,
-        informative_lengths=informative_lengths,
-        equivalent_lengths=equivalent_lengths,
-        bracken_read_lengths=bracken_read_lengths,
-        minimum_usable_span=args.minimum_usable_span,
-        kmer_length=args.kmer_length,
+    write_metrics(
+        args.stats,
+        summary_metrics(
+            input_single=input_single,
+            input_paired=input_paired,
+            retained_single=retained_single,
+            retained_paired=retained_paired,
+            dropped_short=dropped,
+            informative_lengths=metrics.informative_lengths,
+            equivalent_lengths=metrics.equivalent_lengths,
+            bracken_read_lengths=metrics.bracken_read_lengths,
+            confidence_denominators=metrics.confidence_denominators,
+            minimum_usable_span=args.minimum_usable_span,
+            kmer_length=args.kmer_length,
+        ),
     )
-    write_metrics(args.stats, metrics)
+
+
+def pair_fragments(args):
+    """Emit mixed single-end and paired fragments as native Kraken2 paired input.
+
+    Single-end fragments are paired with a placeholder mate shorter than the
+    k-mer length so Kraken2 scans zero minimizer positions from it.  One
+    fragment therefore remains exactly one Kraken2 classification record with
+    the same confidence denominator as native single-end classification.
+    """
+    if args.dummy_mate_length >= args.kmer_length:
+        raise ValueError(
+            f"dummy mate length {args.dummy_mate_length} must be shorter than the "
+            f"k-mer length {args.kmer_length}; a mate of at least k contributes "
+            "minimizer positions and would change the confidence denominator"
+        )
+    if bool(args.r1) != bool(args.r2):
+        raise ValueError("--r1 and --r2 must be provided together")
+
+    input_single = input_paired = retained_single = retained_paired = dropped = 0
+    metrics = FragmentMetrics(args.kmer_length)
+    with ExitStack() as stack:
+        output_r1 = stack.enter_context(open_text(args.output_r1, "w", args.gzip_level))
+        output_r2 = stack.enter_context(open_text(args.output_r2, "w", args.gzip_level))
+        for path in args.single:
+            for record in fastq_records(path):
+                input_single += 1
+                sequences = (record[1],)
+                if not keep_fragment(sequences, args.minimum_usable_span):
+                    dropped += 1
+                    continue
+                dummy = dummy_mate_for(record, args.dummy_mate_length)
+                write_record(output_r1, record)
+                write_record(output_r2, dummy)
+                retained_single += 1
+                metrics.add(sequences, (record, dummy))
+
+        if args.r1:
+            for _, r1, r2 in paired_records(args.r1, args.r2):
+                input_paired += 1
+                sequences = (r1[1], r2[1])
+                if not keep_fragment(sequences, args.minimum_usable_span):
+                    dropped += 1
+                    continue
+                write_record(output_r1, r1)
+                write_record(output_r2, r2)
+                retained_paired += 1
+                metrics.add(sequences, (r1, r2))
+
+    write_metrics(
+        args.stats,
+        summary_metrics(
+            input_single=input_single,
+            input_paired=input_paired,
+            retained_single=retained_single,
+            retained_paired=retained_paired,
+            dropped_short=dropped,
+            informative_lengths=metrics.informative_lengths,
+            equivalent_lengths=metrics.equivalent_lengths,
+            bracken_read_lengths=metrics.bracken_read_lengths,
+            confidence_denominators=metrics.confidence_denominators,
+            minimum_usable_span=args.minimum_usable_span,
+            kmer_length=args.kmer_length,
+        ),
+    )
 
 
 def collect_stats(args):
     input_single = input_paired = retained_single = retained_paired = dropped = 0
-    informative_lengths = Counter()
-    equivalent_lengths = Counter()
-    bracken_read_lengths = Counter()
+    metrics = FragmentMetrics(args.kmer_length)
     for path in args.single:
         for record in fastq_records(path):
             input_single += 1
@@ -479,11 +642,7 @@ def collect_stats(args):
                 dropped += 1
                 continue
             retained_single += 1
-            informative, equivalent, read_lengths = fragment_metrics(sequences, args.kmer_length)
-            read_lengths = bracken_lengths_for_single_record(record, read_lengths)
-            informative_lengths[informative] += 1
-            equivalent_lengths[equivalent] += 1
-            bracken_read_lengths.update(read_lengths)
+            metrics.add(sequences, (record,))
     if bool(args.r1) != bool(args.r2):
         raise ValueError("--r1 and --r2 must be provided together")
     if args.r1:
@@ -494,23 +653,24 @@ def collect_stats(args):
                 dropped += 1
                 continue
             retained_paired += 1
-            informative, equivalent, read_lengths = fragment_metrics(sequences, args.kmer_length)
-            informative_lengths[informative] += 1
-            equivalent_lengths[equivalent] += 1
-            bracken_read_lengths.update(read_lengths)
-    metrics = summary_metrics(
-        input_single=input_single,
-        input_paired=input_paired,
-        retained_single=retained_single,
-        retained_paired=retained_paired,
-        dropped_short=dropped,
-        informative_lengths=informative_lengths,
-        equivalent_lengths=equivalent_lengths,
-        bracken_read_lengths=bracken_read_lengths,
-        minimum_usable_span=args.minimum_usable_span,
-        kmer_length=args.kmer_length,
+            metrics.add(sequences, (r1, r2))
+    write_metrics(
+        args.output,
+        summary_metrics(
+            input_single=input_single,
+            input_paired=input_paired,
+            retained_single=retained_single,
+            retained_paired=retained_paired,
+            dropped_short=dropped,
+            informative_lengths=metrics.informative_lengths,
+            equivalent_lengths=metrics.equivalent_lengths,
+            bracken_read_lengths=metrics.bracken_read_lengths,
+            confidence_denominators=metrics.confidence_denominators,
+            minimum_usable_span=args.minimum_usable_span,
+            kmer_length=args.kmer_length,
+        ),
+        args.prefix,
     )
-    write_metrics(args.output, metrics, args.prefix)
 
 
 def read_metric(path: str, name: str) -> float:
@@ -573,6 +733,19 @@ def select_bracken_length(args):
     print(selected)
 
 
+def add_gzip_level_option(parser):
+    # Compression level changes only the compressed representation. It is an
+    # explicit int with no truthiness fallback so that level 0 (stored) works.
+    parser.add_argument(
+        "--gzip-level",
+        type=int,
+        default=DEFAULT_GZIP_LEVEL,
+        choices=range(0, 10),
+        metavar="{0..9}",
+        help="gzip compression level for FASTQ outputs (default: %(default)s)",
+    )
+
+
 def add_common_stats_options(parser):
     parser.add_argument("--minimum-usable-span", type=int, default=35)
     parser.add_argument("--kmer-length", type=int, default=35)
@@ -587,6 +760,7 @@ def build_parser():
     single.add_argument("--single", action="append", required=True)
     single.add_argument("--output", required=True)
     add_common_stats_options(single)
+    add_gzip_level_option(single)
     single.set_defaults(func=prepare_single)
 
     paired = subparsers.add_parser("prepare-paired", help="validate and filter paired FASTQs")
@@ -595,15 +769,39 @@ def build_parser():
     paired.add_argument("--output-r1", required=True)
     paired.add_argument("--output-r2", required=True)
     add_common_stats_options(paired)
+    add_gzip_level_option(paired)
     paired.set_defaults(func=prepare_paired)
 
-    combine = subparsers.add_parser("combine", help="combine SE fragments and normalised paired fragments")
+    pair = subparsers.add_parser(
+        "pair-fragments",
+        help="emit SE and paired fragments as native Kraken2 --paired input",
+    )
+    pair.add_argument("--single", action="append", default=[])
+    pair.add_argument("--r1")
+    pair.add_argument("--r2")
+    pair.add_argument("--output-r1", required=True)
+    pair.add_argument("--output-r2", required=True)
+    pair.add_argument(
+        "--dummy-mate-length",
+        type=int,
+        default=1,
+        help="placeholder mate length for SE fragments; must be shorter than --kmer-length",
+    )
+    add_common_stats_options(pair)
+    add_gzip_level_option(pair)
+    pair.set_defaults(func=pair_fragments)
+
+    combine = subparsers.add_parser(
+        "combine",
+        help="DEPRECATED: concatenate mates into one record with an N spacer",
+    )
     combine.add_argument("--single", action="append", default=[])
     combine.add_argument("--r1")
     combine.add_argument("--r2")
     combine.add_argument("--output", required=True)
     combine.add_argument("--gap-length", type=int, default=100)
     add_common_stats_options(combine)
+    add_gzip_level_option(combine)
     combine.set_defaults(func=combine_fragments)
 
     stats = subparsers.add_parser("stats", help="validate FASTQs and report fragment-level statistics")
@@ -626,6 +824,7 @@ def build_parser():
     host.add_argument("--output-r2", help="paired R2 FASTQ output")
     host.add_argument("--minimum-mapq", type=int, default=0)
     host.add_argument("--stats", required=True)
+    add_gzip_level_option(host)
     host.set_defaults(func=filter_host_sam)
 
     bracken = subparsers.add_parser("select-bracken-length", help="select a reproducible Bracken model")
@@ -650,6 +849,8 @@ def main():
         parser.error("--minimum-mapq must be non-negative")
     if hasattr(args, "gap_length") and args.gap_length < args.kmer_length:
         parser.error("--gap-length must be at least --kmer-length to block cross-mate k-mers")
+    if getattr(args, "dummy_mate_length", 1) <= 0:
+        parser.error("--dummy-mate-length must be positive")
     try:
         args.func(args)
     except (OSError, ValueError) as exc:
