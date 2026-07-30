@@ -1,6 +1,7 @@
 process SOURCETRACKER2_GIBBS {
     label 'process_medium'
     tag "sourcetracker2:${params.get('sourcetracker2_analysis_label', 'default')}"
+    container "${params.container_sourcetracker2}"
     publishDir "${params.outdir}/source_attribution/sourcetracker2/${params.get('sourcetracker2_analysis_label', 'default')}", mode: 'copy'
 
     input:

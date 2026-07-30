@@ -1,6 +1,7 @@
 process MULTIQC_REPORT {
     label 'process_low'
     tag 'multiqc'
+    container "${params.container_multiqc}"
 
     publishDir "${params.outdir}/qc/multiqc", mode: 'copy'
 

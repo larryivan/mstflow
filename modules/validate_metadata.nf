@@ -1,6 +1,7 @@
 process VALIDATE_METADATA {
     label 'process_low'
     tag 'metadata'
+    container "${params.container_python_tools}"
 
     publishDir "${params.outdir}/pipeline_info", mode: 'copy'
 
@@ -26,6 +27,7 @@ process VALIDATE_METADATA {
     python3 "${validator_script}" \\
         --input "${metadata}" \\
         --output "metadata.validated.tsv" \\
+        --skip-filesystem-checks \\
         --default-host-group '${defaultHostGroup}' \\
         ${requireExplicitHostArg} ${requireExplicitHostActionArg} ${defaultHostFastaArg}
 
@@ -46,6 +48,7 @@ process VALIDATE_METADATA {
     python3 "${validator_script}" \\
         --input "${metadata}" \\
         --output "metadata.validated.tsv" \\
+        --skip-filesystem-checks \\
         --default-host-group '${defaultHostGroup}' \\
         ${requireExplicitHostArg} ${requireExplicitHostActionArg} ${defaultHostFastaArg}
     printf '"${task.process}":\\n    stub: "true"\\n' > validate_metadata_versions.yml

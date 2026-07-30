@@ -8,11 +8,11 @@ MSTFlow is a Nextflow DSL2 workflow for fragment-aware metagenomic preprocessing
 metadata.tsv
   -> metadata and reference preflight
   -> raw FastQC
-  -> fastp (modern) or AdapterRemoval (ancient)
-  -> pair-aware host removal
+  -> fastp (modern) or AdapterRemoval + normalization (ancient)
+  -> BWA alignment + pair-aware host filtering
   -> cleaned FastQC
-  -> Kraken2
-  -> per-sample Bracken model selection
+  -> fragment preparation + Kraken2
+  -> per-sample Bracken model selection + Bracken
   -> count/relative-abundance tables
   -> optional SourceTracker2
   -> MultiQC and provenance reports
@@ -34,12 +34,26 @@ Kraken2 2.1.6 counts every minimizer position in `total_kmers`, including the am
 
 - Nextflow 25.10.4 or newer
 - Bash
-- Mamba/Conda for the pinned environments
+- one dependency backend: Docker, Singularity, Apptainer, or Mamba/Conda
 - a BWA-indexed host FASTA when `remove_host: true`
 - a Kraken2 database when `run_kraken2: true`
 - matching Bracken distributions when `run_bracken: true`
 
-The primary tools are version-pinned in [`envs/mstflow.yml`](envs/mstflow.yml). SourceTracker uses its separate compatibility environment in [`envs/sourcetracker2.yml`](envs/sourcetracker2.yml).
+The container profiles use a process-level image for each tool family. Every
+default image is pinned by immutable OCI digest in
+[`containers.lock.tsv`](containers.lock.tsv); Python normalization is kept out
+of the AdapterRemoval, BWA, Kraken2, and Bracken processes so those images
+remain single-purpose and independently updatable.
+The locked images target `linux/amd64`. ARM workstations therefore need an
+amd64-compatible container runtime/emulation layer; Linux/amd64 execution is
+recommended for production.
+
+Conda remains open-source software. The Conda profiles are supported with
+[Miniforge](https://github.com/conda-forge/miniforge), the community
+conda-forge distribution that provides Mamba. The primary Conda tools are
+version-pinned in [`envs/mstflow.yml`](envs/mstflow.yml), while SourceTracker
+uses its separate compatibility environment in
+[`envs/sourcetracker2.yml`](envs/sourcetracker2.yml).
 
 ## Run
 
@@ -49,11 +63,24 @@ Run locally with the pinned Conda environments:
 nextflow run . -profile conda -params-file /absolute/path/to/params.yml -resume
 ```
 
-The portable `slurm` profile submits processes through Slurm without assuming an account, partition, module system, work path, or storage layout:
+Run locally with a container engine:
 
 ```bash
-nextflow run . -profile slurm -params-file /absolute/path/to/params.yml -resume
+nextflow run . -profile docker -params-file /absolute/path/to/params.yml -resume
+nextflow run . -profile singularity -params-file /absolute/path/to/params.yml -resume
+nextflow run . -profile apptainer -params-file /absolute/path/to/params.yml -resume
 ```
+
+Portable Slurm profiles are explicit about the dependency backend:
+
+```bash
+nextflow run . -profile slurm_singularity -params-file /absolute/path/to/params.yml -resume
+nextflow run . -profile slurm_apptainer -params-file /absolute/path/to/params.yml -resume
+nextflow run . -profile slurm_conda -params-file /absolute/path/to/params.yml -resume
+```
+
+The historical `slurm` name remains a backward-compatible alias for
+`slurm_conda`.
 
 Site policies belong in an external configuration supplied with Nextflow's global `-c` option; they are intentionally not hard-coded in this repository. See [`docs/server_setup.md`](docs/server_setup.md) for portable server setup, reference validation, resource tuning, and provenance guidance.
 
@@ -66,6 +93,12 @@ bash examples/run_tiny_stub.sh
 ```
 
 Stub mode validates workflow wiring and output contracts; it does not validate real FastQC, BWA, Kraken2, Bracken, or SourceTracker2 behavior.
+
+Run the Python and Nextflow contract suite with:
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ## Metadata
 

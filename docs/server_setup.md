@@ -1,17 +1,24 @@
 # Portable server setup
 
-MSTFlow keeps scientific workflow logic separate from site deployment policy. The repository provides local, Conda, test, and generic Slurm profiles; accounts, queues, module names, storage paths, scratch behavior, and submission limits belong in an external site configuration.
+MSTFlow keeps scientific workflow logic separate from site deployment policy. The repository provides local Docker, Singularity, Apptainer, Conda, test, and generic Slurm profiles; accounts, queues, module names, storage paths, scratch behavior, and submission limits belong in an external site configuration.
 
 ## 1. Software
 
-Install Nextflow 25.10.4 or newer and make Mamba or Conda available on `PATH`:
+Install Nextflow 25.10.4 or newer and choose one dependency backend.
+For example:
 
 ```bash
 nextflow -version
-mamba --version
+singularity --version
 ```
 
-The main environment is defined in `envs/mstflow.yml`. SourceTracker2 uses the separate compatibility environment in `envs/sourcetracker2.yml` because version 2.0.1 requires an older Python/NumPy stack.
+The process-level container identities are recorded in `containers.lock.tsv`.
+They are locked for `linux/amd64`; ARM hosts need explicit amd64 emulation, and
+production cluster runs should use Linux/amd64 nodes.
+The main Conda environment is defined in `envs/mstflow.yml`. SourceTracker2
+uses the separate compatibility environment in `envs/sourcetracker2.yml`
+because version 2.0.1 requires an older Python/NumPy stack. Conda itself remains
+open source; Miniforge is the recommended community conda-forge distribution.
 
 Resolve both environments before a production launch:
 
@@ -31,25 +38,83 @@ nextflow run . \
   -resume
 ```
 
-Generic Slurm execution:
+Local container execution:
 
 ```bash
 nextflow run . \
-  -profile slurm \
+  -profile singularity \
   -params-file /absolute/path/to/params.yml \
   -resume
 ```
 
-The generic Slurm profile deliberately does not choose an account, partition, work directory, cache directory, module system, or scratch policy. Put those values in an external configuration and compose it at launch:
+Use `docker` or `apptainer` in place of `singularity` for those engines.
+
+Generic Slurm execution:
 
 ```bash
 nextflow -c /absolute/path/to/site.config run . \
-  -profile slurm \
+  -profile slurm_singularity \
   -params-file /absolute/path/to/params.yml \
   -resume
 ```
 
+The alternatives are `slurm_apptainer` and `slurm_conda`. The historical
+`slurm` profile remains an alias for `slurm_conda`.
+
+These profiles deliberately do not choose an account, partition, work
+directory, cache directory, module system, or scratch policy. Put those values
+in the external configuration.
+
 Keep site configuration outside this repository when it contains usernames, allocation names, private paths, or infrastructure assumptions.
+
+Host alignment and pair-aware filtering intentionally run in separate
+single-tool containers. The handoff is a compressed SAM file in the Nextflow
+work directory. It is not published, but it can be larger than the input and
+can contain host sequence. Put `workDir` on access-controlled storage with
+enough temporary capacity, retain it only while `-resume` is needed, and remove
+it under the site's approved data-retention procedure after outputs and
+provenance have been verified.
+
+### Pre-staged SIF images
+
+On clusters where compute nodes cannot pull OCI images, convert each digest in
+`containers.lock.tsv` to a SIF **serially**, verify and record the resulting SIF
+checksum, then override the logical image parameters in the external site
+configuration:
+
+```groovy
+params {
+    container_fastqc = '/shared/containers/mstflow/fastqc-0.12.1.sif'
+    container_fastp = '/shared/containers/mstflow/fastp-0.24.0.sif'
+    container_adapterremoval = '/shared/containers/mstflow/adapterremoval-2.3.4.sif'
+    container_bwa = '/shared/containers/mstflow/bwa-0.7.19.sif'
+    container_kraken2 = '/shared/containers/mstflow/kraken2-2.1.6.sif'
+    container_bracken = '/shared/containers/mstflow/bracken-2.9.sif'
+    container_biom = '/shared/containers/mstflow/biom-format-2.1.17.sif'
+    container_multiqc = '/shared/containers/mstflow/multiqc-1.29.sif'
+    container_python_tools = '/shared/containers/mstflow/mstflow-python.sif'
+    container_sourcetracker2 = '/shared/containers/mstflow/mstflow-sourcetracker2.sif'
+}
+
+singularity {
+    autoMounts = true
+    runOptions = '--cleanenv'
+}
+```
+
+Add site bind paths through `singularity.runOptions` only when automatic mounts
+are insufficient. Keep cache, temporary, and work directories on a filesystem
+visible from every execution node:
+
+```bash
+export NXF_SINGULARITY_CACHEDIR=/shared/cache/mstflow/singularity
+export SINGULARITY_CACHEDIR=/shared/cache/mstflow/singularity-ce
+export SINGULARITY_TMPDIR=/shared/tmp/mstflow/singularity
+```
+
+Do not start many first-time OCI-to-SIF conversions concurrently. Some
+Singularity versions can race in the shared cache. Pre-staging also makes the
+executed SIF checksum part of the frozen run provenance.
 
 ## 3. Reference validation
 
@@ -123,6 +188,7 @@ For each frozen analysis, archive outside the code repository:
 - the Git commit;
 - the executed params file;
 - an explicit environment package list;
+- `containers.lock.tsv` plus the executed SIF checksums for container runs;
 - the database snapshot identifiers and checksums;
 - Nextflow trace, report, timeline, and DAG files; and
 - emitted tool-version and scientific-QC tables.

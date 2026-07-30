@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BRACKEN_MODULE = REPO / "modules" / "bracken.nf"
+SELECT_BRACKEN_MODULE = REPO / "modules" / "select_bracken_length.nf"
 FRAGMENT_HELPER = REPO / "bin" / "mstflow_fragment_tools.py"
 NEXTFLOW = shutil.which("nextflow")
 
@@ -143,20 +144,32 @@ class BrackenModuleContractTests(unittest.TestCase):
                 params.bracken_rank = 'G'
                 params.bracken_threshold = 10
                 params.bracken_read_len = 'auto'
+                params.container_python_tools = ''
+                params.container_bracken = ''
 
+                include {{ SELECT_BRACKEN_LENGTH }} from {groovy_string(SELECT_BRACKEN_MODULE)}
                 include {{ BRACKEN_PROFILE }} from {groovy_string(BRACKEN_MODULE)}
 
                 workflow {{
-                    bracken_input = Channel.of(
+                    selection_input = Channel.of(
                         tuple(
                             [id: 'sample', bracken_read_len: 'auto'],
-                            file({groovy_string(report)}),
                             file({groovy_string(stats)}),
                             file({groovy_string(database)})
                         )
                     )
                     fragment_helper = Channel.value(file({groovy_string(FRAGMENT_HELPER)}))
-                    BRACKEN_PROFILE(bracken_input, fragment_helper)
+                    SELECT_BRACKEN_LENGTH(selection_input, fragment_helper)
+                    bracken_input = SELECT_BRACKEN_LENGTH.out.selections.map {{
+                        meta, selection ->
+                            tuple(
+                                meta,
+                                file({groovy_string(report)}),
+                                selection,
+                                file({groovy_string(database)})
+                            )
+                    }}
+                    BRACKEN_PROFILE(bracken_input)
                 }}
                 """
             ),
@@ -221,7 +234,15 @@ class BrackenModuleContractTests(unittest.TestCase):
 
     def _assert_no_published_bracken_result(self, root):
         publish_dir = root / "results" / "bracken"
-        published = list(publish_dir.glob("sample.bracken*")) if publish_dir.exists() else []
+        published = (
+            [
+                path
+                for path in publish_dir.glob("sample.bracken*")
+                if not path.name.endswith(".bracken.read_length_selection.tsv")
+            ]
+            if publish_dir.exists()
+            else []
+        )
         self.assertEqual(published, [])
 
     def _command_stderr(self, root):

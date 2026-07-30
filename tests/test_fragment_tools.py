@@ -280,6 +280,7 @@ class FragmentToolTests(unittest.TestCase):
                 row = next(csv.DictReader(handle, delimiter="\t"))
             self.assertEqual(row["observed_median_bracken_read_length"], "75")
             self.assertEqual(row["selected_bracken_read_length"], "75")
+            self.assertEqual(row["distribution_file"], "database75mers.kmer_distrib")
 
             tie_stats = tmp / "tie.tsv"
             tie_stats.write_text(

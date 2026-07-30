@@ -1,6 +1,7 @@
 process BUILD_FEATURE_TABLE {
     label 'process_low'
     tag "${params.bracken_rank}:${params.taxon_filter}"
+    container "${params.container_python_tools}"
 
     publishDir "${params.outdir}/tables", mode: 'copy'
 
@@ -45,6 +46,7 @@ process BUILD_FEATURE_TABLE {
 process BUILD_FEATURE_TABLE_WITH_KRAKEN_QC {
     label 'process_low'
     tag "${params.bracken_rank}:${params.taxon_filter}:kraken_qc"
+    container "${params.container_python_tools}"
 
     publishDir "${params.outdir}/tables", mode: 'copy'
 

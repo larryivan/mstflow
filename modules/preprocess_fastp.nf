@@ -1,6 +1,7 @@
 process PREPROCESS_FASTP {
     label 'process_medium'
     tag "${meta.id}"
+    container "${params.container_fastp}"
 
     publishDir "${params.outdir}/preprocess/fastp", mode: 'copy', saveAs: { filename ->
         (params.publish_intermediates || !filename.endsWith('.fq.gz')) ? filename : null

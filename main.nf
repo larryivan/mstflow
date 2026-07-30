@@ -6,9 +6,13 @@ include { VALIDATE_METADATA } from './modules/validate_metadata'
 include { FASTQC as FASTQC_RAW } from './modules/fastqc'
 include { FASTQC as FASTQC_CLEAN } from './modules/fastqc'
 include { PREPROCESS_FASTP } from './modules/preprocess_fastp'
-include { PREPROCESS_ADAPTERREMOVAL } from './modules/preprocess_adapterremoval'
-include { HOST_REMOVE_BWA } from './modules/host_remove_bwa'
+include { ADAPTERREMOVAL_RAW } from './modules/preprocess_adapterremoval'
+include { NORMALIZE_ADAPTERREMOVAL } from './modules/normalize_adapterremoval'
+include { HOST_ALIGN_BWA } from './modules/host_remove_bwa'
+include { FILTER_HOST_ALIGNMENTS } from './modules/filter_host_alignments'
+include { PREPARE_KRAKEN_INPUT } from './modules/prepare_kraken_input'
 include { KRAKEN2_PROFILE } from './modules/kraken2'
+include { SELECT_BRACKEN_LENGTH } from './modules/select_bracken_length'
 include { BRACKEN_PROFILE } from './modules/bracken'
 include { BUILD_FEATURE_TABLE_WITH_KRAKEN_QC } from './modules/build_feature_table'
 include { PREPARE_SOURCETRACKER2_INPUTS } from './modules/prepare_sourcetracker2'
@@ -120,10 +124,22 @@ def rejectReservedArgs(name, value, reservedFlags) {
 def readListFromRow(row) {
     def fastq1 = row.fastq_1.toString()
     def fastq2 = row.fastq_2.toString()
-    if (fastq2 == 'NA' || fastq2 == '') {
-        return [file(fastq1, checkIfExists: true)]
+    def read1 = file(fastq1, checkIfExists: true)
+    if (!java.nio.file.Files.isRegularFile(read1)) {
+        throw new IllegalArgumentException(
+            "Sample '${row.sample_id}' fastq_1 is not a regular file: ${read1}"
+        )
     }
-    return [file(fastq1, checkIfExists: true), file(fastq2, checkIfExists: true)]
+    if (fastq2 == 'NA' || fastq2 == '') {
+        return [read1]
+    }
+    def read2 = file(fastq2, checkIfExists: true)
+    if (!java.nio.file.Files.isRegularFile(read2)) {
+        throw new IllegalArgumentException(
+            "Sample '${row.sample_id}' fastq_2 is not a regular file: ${read2}"
+        )
+    }
+    return [read1, read2]
 }
 
 
@@ -439,6 +455,15 @@ workflow {
 
     def validatorScript = file("${projectDir}/bin/validate_metadata.py", checkIfExists: true)
     def fragmentHelper = file("${projectDir}/bin/mstflow_fragment_tools.py", checkIfExists: true)
+    def adapterRemovalNormalizer = file(
+        "${projectDir}/bin/normalize_adapterremoval.py", checkIfExists: true
+    )
+    def hostAlignmentFilter = file(
+        "${projectDir}/bin/filter_host_alignments.py", checkIfExists: true
+    )
+    def krakenInputPreparer = file(
+        "${projectDir}/bin/prepare_kraken_input.py", checkIfExists: true
+    )
     def buildFeatureTableScript = file("${projectDir}/bin/build_feature_table.py", checkIfExists: true)
     def prepareSourceTrackerScript = file(
         "${projectDir}/bin/prepare_sourcetracker2_inputs.py", checkIfExists: true
@@ -450,6 +475,9 @@ workflow {
 
     validator_script_ch = channel.value(validatorScript)
     fragment_helper_ch = channel.value(fragmentHelper)
+    adapterremoval_normalizer_ch = channel.value(adapterRemovalNormalizer)
+    host_alignment_filter_ch = channel.value(hostAlignmentFilter)
+    kraken_input_preparer_ch = channel.value(krakenInputPreparer)
     build_feature_table_script_ch = channel.value(buildFeatureTableScript)
     prepare_sourcetracker2_script_ch = channel.value(prepareSourceTrackerScript)
     sourcetracker2_runner_ch = channel.value(sourceTrackerRunner)
@@ -467,6 +495,10 @@ workflow {
 
     VALIDATE_METADATA(input_ch, validator_script_ch)
 
+    // The validator runs inside a portable Python container and therefore
+    // treats filesystem paths embedded in TSV text as opaque. The Nextflow
+    // controller performs the authoritative existence checks here, and
+    // hostBundleFor() independently checks each selected FASTA/index bundle.
     samples_ch = VALIDATE_METADATA.out.metadata
         .splitCsv(header: true, sep: '\t')
         .map { row -> tuple(metaFromRow(row), readListFromRow(row)) }
@@ -495,9 +527,14 @@ workflow {
     }
 
     PREPROCESS_FASTP(preprocess_ch.fastp)
-    PREPROCESS_ADAPTERREMOVAL(preprocess_ch.adapterremoval, fragment_helper_ch)
+    ADAPTERREMOVAL_RAW(preprocess_ch.adapterremoval)
+    NORMALIZE_ADAPTERREMOVAL(
+        ADAPTERREMOVAL_RAW.out.raw,
+        adapterremoval_normalizer_ch,
+        fragment_helper_ch
+    )
 
-    prehost_ch = PREPROCESS_FASTP.out.reads.mix(PREPROCESS_ADAPTERREMOVAL.out.reads)
+    prehost_ch = PREPROCESS_FASTP.out.reads.mix(NORMALIZE_ADAPTERREMOVAL.out.reads)
 
     if (removeHost) {
         // Fail closed rather than silently dropping samples. `host_action` is
@@ -516,11 +553,16 @@ workflow {
             .map { meta, reads -> tuple(meta.id, meta, reads) }
             .join(host_bundle_ch)
             .map { _id, meta, reads, hostBundle -> tuple(meta, reads, hostBundle) }
-        HOST_REMOVE_BWA(host_input_ch, fragment_helper_ch)
-        clean_ch = HOST_REMOVE_BWA.out.reads
+        HOST_ALIGN_BWA(host_input_ch)
+        FILTER_HOST_ALIGNMENTS(
+            HOST_ALIGN_BWA.out.alignments,
+            host_alignment_filter_ch,
+            fragment_helper_ch
+        )
+        clean_ch = FILTER_HOST_ALIGNMENTS.out.reads
             .mix(host_views.skip)
             .mix(undeclared_host_action_ch)
-        host_qc_ch = HOST_REMOVE_BWA.out.logs.mix(HOST_REMOVE_BWA.out.qc)
+        host_qc_ch = HOST_ALIGN_BWA.out.logs.mix(FILTER_HOST_ALIGNMENTS.out.qc)
     } else {
         clean_ch = prehost_ch
         host_qc_ch = channel.empty()
@@ -532,8 +574,12 @@ workflow {
     FASTQC_CLEAN(clean_qc_ch)
 
     if (runKraken2) {
-        kraken_input_ch = clean_ch.map { meta, reads -> tuple(meta, reads, krakenDbPath) }
-        KRAKEN2_PROFILE(kraken_input_ch, fragment_helper_ch)
+        PREPARE_KRAKEN_INPUT(clean_ch, kraken_input_preparer_ch, fragment_helper_ch)
+        kraken_input_ch = PREPARE_KRAKEN_INPUT.out.prepared.map {
+            meta, reads, readLength, inputMode ->
+                tuple(meta, reads, readLength, inputMode, krakenDbPath)
+        }
+        KRAKEN2_PROFILE(kraken_input_ch)
         kraken_qc_ch = KRAKEN2_PROFILE.out.reports
             .map { _meta, report, readLength -> [report, readLength] }
             .flatten()
@@ -544,10 +590,27 @@ workflow {
     }
 
     if (runBracken) {
-        bracken_input_ch = KRAKEN2_PROFILE.out.reports.map { meta, report, readLength ->
-            tuple(meta, report, readLength, brackenDbPath)
+        bracken_selection_input_ch = KRAKEN2_PROFILE.out.reports.map {
+            meta, _report, readLength ->
+                tuple(meta, readLength, brackenDbPath)
         }
-        BRACKEN_PROFILE(bracken_input_ch, fragment_helper_ch)
+        SELECT_BRACKEN_LENGTH(bracken_selection_input_ch, fragment_helper_ch)
+        bracken_report_keyed_ch = KRAKEN2_PROFILE.out.reports.map {
+            meta, report, _readLength -> tuple(meta.id, meta, report)
+        }
+        bracken_selection_keyed_ch = SELECT_BRACKEN_LENGTH.out.selections.map {
+            meta, selection -> tuple(meta.id, selection)
+        }
+        bracken_input_ch = bracken_report_keyed_ch
+            .join(
+                bracken_selection_keyed_ch,
+                failOnDuplicate: true,
+                failOnMismatch: true
+            )
+            .map { _id, meta, report, selection ->
+                tuple(meta, report, selection, brackenDbPath)
+            }
+        BRACKEN_PROFILE(bracken_input_ch)
 
         // `collect()` preserves task completion order, so the same inputs can
         // reach a terminal process in a different order on every run. Sorting
@@ -555,7 +618,7 @@ workflow {
         // therefore the task cache key depend only on the inputs. The tables
         // themselves are order-invariant, so results do not change.
         bracken_files_ch = BRACKEN_PROFILE.out.tables
-            .map { _meta, bracken, _report, _selection -> bracken }
+            .map { _meta, bracken, _report -> bracken }
             .toSortedList { left, right -> left.name <=> right.name }
         kraken_reports_ch = KRAKEN2_PROFILE.out.reports
             .map { _meta, report, _readLength -> report }
@@ -570,8 +633,8 @@ workflow {
         )
 
         bracken_qc_ch = BRACKEN_PROFILE.out.tables
-            .map { _meta, _bracken, report, selection -> [report, selection] }
-            .flatten()
+            .map { _meta, _bracken, report -> report }
+            .mix(SELECT_BRACKEN_LENGTH.out.selections.map { _meta, selection -> selection })
             .mix(BRACKEN_PROFILE.out.status)
         table_qc_ch = BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.qc
             .mix(BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.sample_qc)
@@ -613,9 +676,9 @@ workflow {
     raw_fastqc_files = FASTQC_RAW.out.qc.map { _meta, zip, html -> [zip, html] }.flatten()
     clean_fastqc_files = FASTQC_CLEAN.out.qc.map { _meta, zip, html -> [zip, html] }.flatten()
     fastp_qc_files = PREPROCESS_FASTP.out.logs.flatten()
-    adapterremoval_qc_files = PREPROCESS_ADAPTERREMOVAL.out.logs
+    adapterremoval_qc_files = ADAPTERREMOVAL_RAW.out.logs
         .flatten()
-        .mix(PREPROCESS_ADAPTERREMOVAL.out.qc)
+        .mix(NORMALIZE_ADAPTERREMOVAL.out.qc)
 
     // Sorted so MultiQC always stages the same file into the same qcNN
     // directory, which keeps the report input set and the task cache key

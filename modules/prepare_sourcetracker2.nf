@@ -1,6 +1,7 @@
 process PREPARE_SOURCETRACKER2_INPUTS {
     label 'process_low'
     tag "sourcetracker2_inputs:${params.get('sourcetracker2_analysis_label', 'default')}"
+    container "${params.container_python_tools}"
 
     publishDir "${params.outdir}/source_attribution/sourcetracker2/${params.get('sourcetracker2_analysis_label', 'default')}", mode: 'copy'
 

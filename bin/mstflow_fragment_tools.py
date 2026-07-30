@@ -114,7 +114,11 @@ def paired_records(r1_path: str, r2_path: str):
 
 
 def sam_groups(path: str):
-    handle = sys.stdin if path == "-" else open(path, encoding="utf-8")
+    # BWA runs in its own single-tool container and writes a transient,
+    # compressed SAM bundle.  The Python filtering process consumes that
+    # bundle in a separate container, so accept both plain and gzip-compressed
+    # SAM without changing the stdin streaming contract used by callers.
+    handle = sys.stdin if path == "-" else open_text(path, "r")
     close_handle = path != "-"
     current_name = None
     records = []
@@ -688,7 +692,11 @@ def select_bracken_length(args):
     for candidate in Path(args.database).glob("database*mers.kmer_distrib"):
         match = BRACKEN_DISTRIBUTION.match(candidate.name)
         if match:
-            available[int(match.group(1))] = candidate.resolve()
+            # The selected model is an interface between two separate
+            # processes. Record only its stable database-relative basename:
+            # task-local absolute staging paths vary across retries and would
+            # otherwise perturb checksums and downstream cache keys.
+            available[int(match.group(1))] = candidate.name
     if not available:
         raise ValueError(
             f"no database{{N}}mers.kmer_distrib files found in Bracken database: {args.database}"

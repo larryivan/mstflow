@@ -113,6 +113,7 @@ multiqc_data/
 *.bz2
 *.xz
 *.aria2
+*.sif
 
 # OS/editor
 .DS_Store

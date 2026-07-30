@@ -1,6 +1,7 @@
 process MAKE_BIOM {
     label 'process_low'
     tag 'feature_table'
+    container "${params.container_biom}"
 
     publishDir "${params.outdir}/source_attribution/sourcetracker2/${params.get('sourcetracker2_analysis_label', 'default')}", mode: 'copy'
 

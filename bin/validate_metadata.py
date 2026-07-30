@@ -191,6 +191,15 @@ def main():
             "so every row explicitly declares remove or skip."
         ),
     )
+    parser.add_argument(
+        "--skip-filesystem-checks",
+        action="store_true",
+        help=(
+            "Validate metadata semantics while leaving FASTQ/host paths opaque. "
+            "Use only when the workflow controller independently stages and "
+            "checks every referenced file."
+        ),
+    )
     args = parser.parse_args()
 
     default_host_group = norm(args.default_host_group).lower()
@@ -245,13 +254,13 @@ def main():
             fastq_2 = norm(row.get("fastq_2"))
             if is_na(fastq_1):
                 errors.append(f"line {line_no}: fastq_1 is required")
-            elif not os.path.isfile(fastq_1):
+            elif not args.skip_filesystem_checks and not os.path.isfile(fastq_1):
                 errors.append(f"line {line_no}: fastq_1 is not a regular file: {fastq_1}")
 
             if layout == "PE":
                 if is_na(fastq_2):
                     errors.append(f"line {line_no}: PE samples require fastq_2")
-                elif not os.path.isfile(fastq_2):
+                elif not args.skip_filesystem_checks and not os.path.isfile(fastq_2):
                     errors.append(f"line {line_no}: fastq_2 is not a regular file: {fastq_2}")
             elif not is_na(fastq_2):
                 errors.append(f"line {line_no}: SE samples must set fastq_2 to NA")
@@ -318,11 +327,16 @@ def main():
                     )
                 host_ref = "NA"
             else:
-                if not is_na(host_ref) and host_ref != "default" and not os.path.exists(host_ref):
+                if (
+                    not args.skip_filesystem_checks
+                    and not is_na(host_ref)
+                    and host_ref != "default"
+                    and not os.path.exists(host_ref)
+                ):
                     errors.append(
                         f"line {line_no}: host_ref must be default, NA, or an existing FASTA path: {host_ref}"
                     )
-                if args.default_host_fasta is not None:
+                if args.default_host_fasta is not None and not args.skip_filesystem_checks:
                     effective_host_ref = (
                         norm(args.default_host_fasta)
                         if is_na(host_ref) or host_ref == "default"

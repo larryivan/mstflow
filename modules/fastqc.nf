@@ -1,6 +1,7 @@
 process FASTQC {
     label 'process_low'
     tag "${meta.id}:${meta.qc_stage}"
+    container "${params.container_fastqc}"
 
     publishDir { "${params.outdir}/qc/${task.process.toLowerCase()}" }, mode: 'copy'
 

@@ -1,6 +1,7 @@
 process PLOT_SOURCETRACKER2 {
     label 'process_low'
     tag 'sourcetracker2_plot'
+    container "${params.container_python_tools}"
 
     publishDir "${params.outdir}/source_attribution/sourcetracker2/${params.get('sourcetracker2_analysis_label', 'default')}", mode: 'copy'
 
@@ -52,6 +53,7 @@ PY
 process PLOT_SOURCETRACKER2_WITH_UNCERTAINTY {
     label 'process_low'
     tag 'sourcetracker2_plot_with_uncertainty'
+    container "${params.container_python_tools}"
 
     publishDir "${params.outdir}/source_attribution/sourcetracker2/${params.get('sourcetracker2_analysis_label', 'default')}", mode: 'copy'
 

@@ -26,6 +26,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 KRAKEN2_MODULE = REPO / "modules" / "kraken2.nf"
+PREPARE_KRAKEN_MODULE = REPO / "modules" / "prepare_kraken_input.nf"
+PREPARE_KRAKEN_SCRIPT = REPO / "bin" / "prepare_kraken_input.py"
 FRAGMENT_HELPER = REPO / "bin" / "mstflow_fragment_tools.py"
 NEXTFLOW = shutil.which("nextflow")
 
@@ -155,19 +157,33 @@ class Kraken2ModuleContractTests(unittest.TestCase):
                 params.kraken2_report_minimizer_data = true
                 params.kraken2_save_read_classifications = false
                 params.fastq_gzip_level = 6
+                params.container_python_tools = ''
+                params.container_kraken2 = ''
 
+                include {{ PREPARE_KRAKEN_INPUT }} from {groovy_string(PREPARE_KRAKEN_MODULE)}
                 include {{ KRAKEN2_PROFILE }} from {groovy_string(KRAKEN2_MODULE)}
 
                 workflow {{
-                    kraken_input = Channel.of(
+                    biological_reads = Channel.of(
                         tuple(
                             [id: 'sample', age_group: {groovy_string(age_group)}],
-                            [{read_list}],
-                            file({groovy_string(database)})
+                            [{read_list}]
                         )
                     )
+                    prepare_script = Channel.value(file({groovy_string(PREPARE_KRAKEN_SCRIPT)}))
                     fragment_helper = Channel.value(file({groovy_string(FRAGMENT_HELPER)}))
-                    KRAKEN2_PROFILE(kraken_input, fragment_helper)
+                    PREPARE_KRAKEN_INPUT(biological_reads, prepare_script, fragment_helper)
+                    kraken_input = PREPARE_KRAKEN_INPUT.out.prepared.map {{
+                        meta, prepared_reads, read_length, input_mode ->
+                            tuple(
+                                meta,
+                                prepared_reads,
+                                read_length,
+                                input_mode,
+                                file({groovy_string(database)})
+                            )
+                    }}
+                    KRAKEN2_PROFILE(kraken_input)
                 }}
                 """
             ),
@@ -229,6 +245,8 @@ class Kraken2ModuleContractTests(unittest.TestCase):
             if argument.endswith((".fq.gz", ".fastq.gz"))
         ]
         self.assertEqual(len(operands), 2, arguments)
+        self.assertIn(".kraken_input_R1.", Path(operands[0]).name)
+        self.assertIn(".kraken_input_R2.", Path(operands[1]).name)
         self.assertTrue((root / "results" / "kraken2" / "sample.kraken2.report.txt").is_file())
 
     def test_single_end_input_is_not_submitted_as_paired(self):
@@ -238,7 +256,7 @@ class Kraken2ModuleContractTests(unittest.TestCase):
         self.assertNotIn("--paired", arguments)
         self.assertNotIn("--check-names", arguments)
 
-    def test_ancient_mixed_input_is_normalised_only_inside_kraken_task(self):
+    def test_ancient_mixed_input_uses_native_paired_preparation(self):
         for layout in ("MIXED", "MIXED_DEHOSTED"):
             with self.subTest(layout=layout):
                 root, completed, args_log = self._run_case("normal", layout=layout)

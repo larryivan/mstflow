@@ -1,31 +1,53 @@
 process BRACKEN_PROFILE {
     label 'process_medium'
     tag "${meta.id}"
+    container "${params.container_bracken}"
 
     publishDir "${params.outdir}/bracken", mode: 'copy'
 
     input:
-    tuple val(meta), path(report), path(read_length_stats), path(bracken_db)
-    path fragment_helper
+    tuple val(meta), path(report), path(read_length_selection), path(bracken_db)
 
     output:
-    tuple val(meta), path("*.bracken.tsv"), path("*.bracken.report.txt"), path("*.bracken.read_length_selection.tsv"), emit: tables
+    tuple val(meta), path("*.bracken.tsv"), path("*.bracken.report.txt"), emit: tables
     path "*.bracken.status.tsv", emit: status
     path "*.bracken.versions.yml", emit: versions
 
     script:
     def id = meta.id
     def extraArgs = params.bracken_extra_args ?: ''
-    def sampleReadLength = meta.bracken_read_len
-    def hasSampleReadLength = sampleReadLength && !(sampleReadLength.toString().toUpperCase() in ['NA', 'N/A', 'AUTO'])
-    def requestedReadLength = hasSampleReadLength ? sampleReadLength : (params.bracken_read_len ?: 'auto')
     """
-    selected_read_length=\$(python3 "${fragment_helper}" select-bracken-length \
-        --stats "${read_length_stats}" \
-        --database "${bracken_db}" \
-        --requested "${requestedReadLength}" \
-        --sample-id "${id}" \
-        --output "${id}.bracken.read_length_selection.tsv")
+    expected_selection_header=\$'sample_id\tobserved_median_bracken_read_length\tselected_bracken_read_length\tselection_mode\tdistribution_file'
+    actual_selection_header=\$(head -n 1 "${read_length_selection}" 2>/dev/null || true)
+    if [[ "\$actual_selection_header" != "\$expected_selection_header" ]]; then
+        echo "Invalid Bracken selection header in ${read_length_selection}" >&2
+        exit 1
+    fi
+    selection_rows=\$(awk 'NR > 1 && NF { rows += 1 } END { print rows + 0 }' "${read_length_selection}")
+    if [[ "\$selection_rows" -ne 1 ]]; then
+        echo "Bracken selection must contain exactly one data row: ${read_length_selection}" >&2
+        exit 1
+    fi
+    selected_sample=\$(awk -F '\t' 'NR == 2 { print \$1 }' "${read_length_selection}")
+    selected_read_length=\$(awk -F '\t' 'NR == 2 { print \$3 }' "${read_length_selection}")
+    selected_distribution=\$(awk -F '\t' 'NR == 2 { print \$5 }' "${read_length_selection}")
+    selected_distribution_basename=\${selected_distribution##*/}
+    [[ "\$selected_sample" == "${id}" ]] || {
+        echo "Bracken selection sample mismatch: expected ${id}, got \$selected_sample" >&2
+        exit 1
+    }
+    [[ "\$selected_read_length" =~ ^[1-9][0-9]*\$ ]] || {
+        echo "Invalid selected Bracken read length in ${read_length_selection}: \$selected_read_length" >&2
+        exit 1
+    }
+    [[ "\$selected_distribution_basename" == "database\${selected_read_length}mers.kmer_distrib" ]] || {
+        echo "Bracken selection distribution does not match selected length: \$selected_distribution" >&2
+        exit 1
+    }
+    [[ -f "${bracken_db}/\$selected_distribution_basename" ]] || {
+        echo "Selected Bracken distribution is absent from the staged database: \$selected_distribution_basename" >&2
+        exit 1
+    }
 
     set +e
     bracken \
@@ -69,15 +91,10 @@ process BRACKEN_PROFILE {
         { unexpected=1 }
         END { exit(matched == 1 && !unexpected ? 0 : 1) }
     ' "${id}.bracken.stderr.log"; then
-        # A valid low-biomass/control report can contain classified reads but
-        # no taxon at the requested rank meeting the declared threshold.
-        # Preserve the sample as a zero-estimate column; never lower the
-        # scientific threshold or fabricate an abundance estimate.
+        # Preserve valid low-biomass/control samples as explicit zero-estimate
+        # columns. Never lower the declared scientific threshold.
         printf 'name\ttaxonomy_id\ttaxonomy_lvl\tkraken_assigned_reads\tadded_reads\tnew_est_reads\tfraction_total_reads\n' \
             > "${id}.bracken.tsv"
-        # The original Kraken report remains available from KRAKEN2_PROFILE.
-        # Emit an explicit zero-root Bracken report so report consumers cannot
-        # mistake below-threshold Kraken classifications for Bracken estimates.
         printf '0.00\t0\t0\tR\t1\troot\n' > "${id}.bracken.report.txt"
         printf 'sample_id\tstatus\treason\tbracken_rank\tthreshold\tselected_read_length\tbracken_exit_status\n%s\tzero_estimates\tno_estimates_at_requested_rank_threshold\t%s\t%s\t%s\t%s\n' \
             "${id}" "${params.bracken_rank}" "${params.bracken_threshold}" "\$selected_read_length" "\$bracken_exit" \
@@ -89,9 +106,6 @@ process BRACKEN_PROFILE {
         exit "\$bracken_exit"
     fi
 
-    # Bracken does not consistently implement -v/--version across releases.
-    # Try its version flag, then parse help without allowing a non-zero help
-    # exit to fail a task.
     version=\$(bracken -v 2>&1 \
         | sed -nE 's/.*[Bb]racken[^0-9]*([0-9]+(\\.[0-9]+){1,2}).*/\\1/p' \
         | head -n 1 || true)
@@ -104,16 +118,8 @@ process BRACKEN_PROFILE {
 
     stub:
     def id = meta.id
-    def sampleReadLength = meta.bracken_read_len
-    def hasSampleReadLength = sampleReadLength && !(sampleReadLength.toString().toUpperCase() in ['NA', 'N/A', 'AUTO'])
-    def requestedReadLength = hasSampleReadLength ? sampleReadLength : (params.bracken_read_len ?: 'auto')
     """
-    selected_read_length=\$(python3 "${fragment_helper}" select-bracken-length \
-        --stats "${read_length_stats}" \
-        --database "${bracken_db}" \
-        --requested "${requestedReadLength}" \
-        --sample-id "${id}" \
-        --output "${id}.bracken.read_length_selection.tsv")
+    selected_read_length=\$(awk -F '\t' 'NR == 2 { print \$3 }' "${read_length_selection}")
     printf 'name\ttaxonomy_id\ttaxonomy_lvl\tkraken_assigned_reads\tadded_reads\tnew_est_reads\tfraction_total_reads\nBacteroides\t816\tG\t1\t0\t1\t1.0\n' \
         > ${id}.bracken.tsv
     cp ${id}.bracken.tsv ${id}.bracken.report.txt
