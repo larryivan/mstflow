@@ -57,6 +57,9 @@ uses its separate compatibility environment in
 
 ## Run
 
+For the four-file reference-panel handoff, see the
+[container quick start](docs/container_quickstart.md).
+
 Run locally with the pinned Conda environments:
 
 ```bash
