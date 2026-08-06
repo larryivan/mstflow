@@ -90,10 +90,6 @@ class ExecutionProfileTests(unittest.TestCase):
             "docker": ("local", "docker"),
             "apptainer": ("local", "apptainer"),
             "singularity": ("local", "singularity"),
-            "slurm": ("slurm", "conda"),
-            "slurm_conda": ("slurm", "conda"),
-            "slurm_apptainer": ("slurm", "apptainer"),
-            "slurm_singularity": ("slurm", "singularity"),
         }
         engines = ("conda", "docker", "apptainer", "singularity")
         for profile, (executor, enabled_engine) in expectations.items():
@@ -103,6 +99,16 @@ class ExecutionProfileTests(unittest.TestCase):
                 for engine in engines:
                     expected = "true" if engine == enabled_engine else "false"
                     self.assertEqual(values[f"{engine}.enabled"], expected)
+
+    def test_no_scheduler_profiles_are_shipped(self):
+        """Executors are site policy and are supplied with -c, never as a profile."""
+        for profile in ("slurm", "slurm_conda", "slurm_apptainer", "slurm_singularity"):
+            with self.subTest(profile=profile):
+                result = subprocess.run(
+                    [NEXTFLOW, "config", "-profile", profile, "-flat"],
+                    cwd=ROOT, capture_output=True, text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":
