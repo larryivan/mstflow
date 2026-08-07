@@ -121,25 +121,37 @@ def rejectReservedArgs(name, value, reservedFlags) {
 }
 
 
-def readListFromRow(row) {
-    def fastq1 = row.fastq_1.toString()
-    def fastq2 = row.fastq_2.toString()
-    def read1 = file(fastq1, checkIfExists: true)
-    if (!java.nio.file.Files.isRegularFile(read1)) {
-        throw new IllegalArgumentException(
-            "Sample '${row.sample_id}' fastq_1 is not a regular file: ${read1}"
-        )
+def resolveReadPath(sampleId, column, value, sheetDir) {
+    // Relative paths are read relative to the samplesheet, so a sheet and its
+    // reads can move together. Paths relative to the launch directory are still
+    // accepted for older sheets; URLs and absolute paths are used as given.
+    def text = value.toString().trim()
+    if (text ==~ /^[A-Za-z][A-Za-z0-9+.-]*:\/\/.+/ || java.nio.file.Paths.get(text).isAbsolute()) {
+        return file(text, checkIfExists: true)
     }
+    def besideSheet = sheetDir.resolve(text)
+    if (besideSheet.exists()) {
+        return besideSheet
+    }
+    def fromLaunchDir = file(text)
+    if (fromLaunchDir.exists()) {
+        return fromLaunchDir
+    }
+    throw new IllegalArgumentException(
+        "Sample '${sampleId}': ${column} '${text}' was not found. Relative paths are " +
+        "looked up next to the samplesheet (${besideSheet}) and then in the launch " +
+        "directory (${fromLaunchDir})."
+    )
+}
+
+
+def readListFromRow(row, sheetDir) {
+    def read1 = resolveReadPath(row.sample_id, 'fastq_1', row.fastq_1, sheetDir)
+    def fastq2 = row.fastq_2.toString()
     if (fastq2 == 'NA' || fastq2 == '') {
         return [read1]
     }
-    def read2 = file(fastq2, checkIfExists: true)
-    if (!java.nio.file.Files.isRegularFile(read2)) {
-        throw new IllegalArgumentException(
-            "Sample '${row.sample_id}' fastq_2 is not a regular file: ${read2}"
-        )
-    }
-    return [read1, read2]
+    return [read1, resolveReadPath(row.sample_id, 'fastq_2', fastq2, sheetDir)]
 }
 
 
@@ -484,6 +496,13 @@ workflow {
     plot_sourcetracker2_script_ch = channel.value(plotSourceTrackerScript)
     taxdump_nodes_ch = channel.value(taxdumpNodesPath)
 
+    def inputMatches = file(params.input, checkIfExists: true)
+    inputMatches = inputMatches instanceof List ? inputMatches : [inputMatches]
+    if (inputMatches.size() != 1) {
+        error "The input parameter must identify exactly one samplesheet; matched ${inputMatches.size()} files"
+    }
+    def samplesheetDir = inputMatches.first().parent
+
     input_ch = channel.fromPath(params.input, checkIfExists: true)
         .collect()
         .map { matches ->
@@ -501,7 +520,7 @@ workflow {
     // hostBundleFor() independently checks each selected FASTA/index bundle.
     samples_ch = VALIDATE_METADATA.out.metadata
         .splitCsv(header: true, sep: '\t')
-        .map { row -> tuple(metaFromRow(row), readListFromRow(row)) }
+        .map { row -> tuple(metaFromRow(row), readListFromRow(row, samplesheetDir)) }
 
     host_bundle_ch = removeHost \
         ? samples_ch

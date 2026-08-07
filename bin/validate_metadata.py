@@ -6,7 +6,10 @@ import re
 import sys
 
 
-REQUIRED_COLUMNS = ["sample_id", "fastq_1", "fastq_2", "layout", "age_group"]
+REQUIRED_COLUMNS = ["sample_id", "fastq_1", "age_group"]
+# fastq_2 may be omitted for an all single-end sheet, and layout is inferred from
+# fastq_2 when absent. Both are always written to the normalized output.
+CANONICAL_COLUMNS = ["sample_id", "fastq_1", "fastq_2", "layout", "age_group"]
 ALLOWED_LAYOUTS = {"SE", "PE"}
 ALLOWED_AGE_GROUPS = {"modern", "ancient"}
 ALLOWED_PREPROCESS_MODES = {
@@ -39,7 +42,7 @@ STANDARD_METADATA_COLUMNS = [
     "experiment",
     "run",
 ]
-OUTPUT_COLUMNS = REQUIRED_COLUMNS + STANDARD_METADATA_COLUMNS
+OUTPUT_COLUMNS = CANONICAL_COLUMNS + STANDARD_METADATA_COLUMNS
 
 
 def norm(value):
@@ -242,9 +245,12 @@ def main():
                 errors.append(f"line {line_no}: duplicate sample_id '{sample_id}'")
             seen.add(sample_id)
 
+            fastq_2_given = not is_na(row.get("fastq_2"))
             layout = norm(row.get("layout")).upper()
-            if layout not in ALLOWED_LAYOUTS:
-                errors.append(f"line {line_no}: layout must be SE or PE")
+            if is_na(layout):
+                layout = "PE" if fastq_2_given else "SE"
+            elif layout not in ALLOWED_LAYOUTS:
+                errors.append(f"line {line_no}: layout must be SE or PE, or left empty to infer it from fastq_2")
 
             age_group = norm(row.get("age_group")).lower()
             if age_group not in ALLOWED_AGE_GROUPS:
