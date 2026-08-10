@@ -452,7 +452,7 @@ workflow {
     }
     if (runBracken) {
         brackenDbPath = requireDirectory(
-            'bracken_db', params.bracken_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d']
+            'bracken_db', params.bracken_db ?: params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d']
         )
         requireBrackenDistributions(brackenDbPath)
         if (krakenDbPath.toRealPath() != brackenDbPath.toRealPath()) {
