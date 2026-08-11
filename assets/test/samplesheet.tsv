@@ -1,0 +1,5 @@
+sample_id	fastq_1	fastq_2	age_group
+ancient_pe	reads/ancient_pe_R1.fastq.gz	reads/ancient_pe_R2.fastq.gz	ancient
+ancient_se	reads/ancient_se.fastq.gz		ancient
+modern_pe	reads/modern_pe_R1.fastq.gz	reads/modern_pe_R2.fastq.gz	modern
+modern_se	reads/modern_se.fastq.gz		modern
