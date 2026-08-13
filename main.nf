@@ -20,87 +20,7 @@ include { MAKE_BIOM } from './modules/make_biom'
 include { SOURCETRACKER2_GIBBS } from './modules/sourcetracker2'
 include { PLOT_SOURCETRACKER2_WITH_UNCERTAINTY } from './modules/plot_sourcetracker2'
 include { MULTIQC_REPORT } from './modules/multiqc'
-
-
-def asBool(name, value) {
-    if (value instanceof Boolean) {
-        return value
-    }
-    def normalized = value == null ? '' : value.toString().trim().toLowerCase()
-    if (normalized in ['true', '1', 'yes', 'y']) {
-        return true
-    }
-    if (normalized in ['false', '0', 'no', 'n']) {
-        return false
-    }
-    throw new IllegalArgumentException(
-        "Parameter '${name}' must be a boolean (true/false, yes/no, or 1/0); received '${value}'"
-    )
-}
-
-
-def asInteger(name, value, minimum = null, maximum = null) {
-    def text = value == null ? '' : value.toString().trim()
-    if (!(text ==~ /^[+-]?\d+$/)) {
-        throw new IllegalArgumentException("Parameter '${name}' must be an integer; received '${value}'")
-    }
-    int parsed
-    try {
-        parsed = Integer.parseInt(text)
-    } catch (Exception _ignored) {
-        throw new IllegalArgumentException("Parameter '${name}' must be an integer; received '${value}'")
-    }
-    if (minimum != null && parsed < minimum) {
-        throw new IllegalArgumentException("Parameter '${name}' must be >= ${minimum}; received '${parsed}'")
-    }
-    if (maximum != null && parsed > maximum) {
-        throw new IllegalArgumentException("Parameter '${name}' must be <= ${maximum}; received '${parsed}'")
-    }
-    return parsed
-}
-
-
-def asNumber(name, value, minimum = null, maximum = null) {
-    double parsed
-    try {
-        parsed = value as Double
-    } catch (Exception _ignored) {
-        throw new IllegalArgumentException("Parameter '${name}' must be numeric; received '${value}'")
-    }
-    if (!Double.isFinite(parsed)) {
-        throw new IllegalArgumentException("Parameter '${name}' must be finite; received '${value}'")
-    }
-    if (minimum != null && parsed < minimum) {
-        throw new IllegalArgumentException("Parameter '${name}' must be >= ${minimum}; received '${parsed}'")
-    }
-    if (maximum != null && parsed > maximum) {
-        throw new IllegalArgumentException("Parameter '${name}' must be <= ${maximum}; received '${parsed}'")
-    }
-    return parsed
-}
-
-
-def requireChoice(name, value, allowed, lowerCase = true) {
-    def normalized = value == null ? '' : value.toString().trim()
-    normalized = lowerCase ? normalized.toLowerCase() : normalized.toUpperCase()
-    if (!(normalized in allowed)) {
-        throw new IllegalArgumentException(
-            "Parameter '${name}' must be one of ${allowed.join(', ')}; received '${value}'"
-        )
-    }
-    return normalized
-}
-
-
-def requireSingleQuotedSafe(name, value) {
-    def text = value == null ? '' : value.toString()
-    if (text.contains("'") || text.contains('\n') || text.contains('\r') || text.indexOf(0) >= 0) {
-        throw new IllegalArgumentException(
-            "Parameter '${name}' must not contain single quotes, newlines, carriage returns, or NUL bytes"
-        )
-    }
-    return text
-}
+include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
 
 def rejectReservedArgs(name, value, reservedFlags) {
@@ -244,128 +164,18 @@ def hostBundleFor(reference) {
 }
 
 
-// Normalize every workflow-controlled parameter once, before process closures
-// read it. This keeps command-line strings (for example "yes" or "0") from
-// being interpreted differently in the workflow and in individual modules.
-params.remove_host = asBool('remove_host', params.remove_host)
-params.run_kraken2 = asBool('run_kraken2', params.run_kraken2)
-params.run_bracken = asBool('run_bracken', params.run_bracken)
-params.run_sourcetracker2 = asBool('run_sourcetracker2', params.run_sourcetracker2)
-params.publish_intermediates = asBool('publish_intermediates', params.publish_intermediates)
-params.kraken2_save_read_classifications = asBool(
-    'kraken2_save_read_classifications', params.kraken2_save_read_classifications
-)
-params.kraken2_use_names = asBool('kraken2_use_names', params.kraken2_use_names)
-params.kraken2_report_minimizer_data = asBool(
-    'kraken2_report_minimizer_data', params.kraken2_report_minimizer_data
-)
-params.sourcetracker2_loo = asBool('sourcetracker2_loo', params.sourcetracker2_loo)
-params.require_explicit_host_for_nondefault = asBool(
-    'require_explicit_host_for_nondefault', params.require_explicit_host_for_nondefault
-)
-params.require_explicit_host_action = asBool(
-    'require_explicit_host_action', params.require_explicit_host_action
-)
-
-params.ancient_pe_mode = requireChoice(
-    'ancient_pe_mode', params.ancient_pe_mode, ['collapsed_only', 'all_fragments']
-)
-params.taxon_filter = requireChoice('taxon_filter', params.taxon_filter, ['none', 'prokaryote'])
-params.bracken_rank = requireChoice(
-    'bracken_rank', params.bracken_rank, ['D', 'P', 'C', 'O', 'F', 'G', 'S'], false
-)
-params.sourcetracker2_aggregate_by = requireChoice(
-    'sourcetracker2_aggregate_by', params.sourcetracker2_aggregate_by, ['sample_id', 'unit_id']
-)
-params.sourcetracker2_taxon_scope = requireChoice(
-    'sourcetracker2_taxon_scope', params.sourcetracker2_taxon_scope, ['filtered', 'all']
-)
-
-params.kraken2_kmer_len = asInteger('kraken2_kmer_len', params.kraken2_kmer_len, 1)
-params.min_length_ancient = asInteger(
-    'min_length_ancient', params.min_length_ancient, params.kraken2_kmer_len
-)
-params.min_length_modern = asInteger(
-    'min_length_modern', params.min_length_modern, params.kraken2_kmer_len
-)
-params.kraken2_min_read_len = asInteger(
-    'kraken2_min_read_len', params.kraken2_min_read_len, params.kraken2_kmer_len
-)
-params.fragment_pair_gap = asInteger(
-    'fragment_pair_gap', params.fragment_pair_gap, params.kraken2_kmer_len
-)
-params.host_min_mapq = asInteger('host_min_mapq', params.host_min_mapq, 0)
-// Compression level for helper-written FASTQ. It changes only the compressed
-// representation, never decompressed content, fragment membership, or counts.
-// Level 0 (stored) is valid, so this must never use a truthiness fallback.
-params.fastq_gzip_level = asInteger('fastq_gzip_level', params.fastq_gzip_level, 0, 9)
-params.host_remove_max_forks = asInteger('host_remove_max_forks', params.host_remove_max_forks, 1)
-params.kraken2_max_forks = asInteger('kraken2_max_forks', params.kraken2_max_forks, 1)
-params.kraken2_cpus = asInteger('kraken2_cpus', params.kraken2_cpus, 1)
-params.kraken2_confidence = asNumber('kraken2_confidence', params.kraken2_confidence, 0.0, 1.0)
-params.kraken2_minimum_hit_groups = asInteger(
-    'kraken2_minimum_hit_groups', params.kraken2_minimum_hit_groups, 1
-)
-params.bracken_threshold = asInteger('bracken_threshold', params.bracken_threshold, 0)
-params.sourcetracker2_source_rarefaction_depth = asInteger(
-    'sourcetracker2_source_rarefaction_depth', params.sourcetracker2_source_rarefaction_depth, 0
-)
-params.sourcetracker2_sink_rarefaction_depth = asInteger(
-    'sourcetracker2_sink_rarefaction_depth', params.sourcetracker2_sink_rarefaction_depth, 0
-)
-params.sourcetracker2_seed = asInteger(
-    'sourcetracker2_seed', params.sourcetracker2_seed, 0, 2_147_483_647
-)
-params.sourcetracker2_min_kraken_classified_fraction = asNumber(
-    'sourcetracker2_min_kraken_classified_fraction',
-    params.sourcetracker2_min_kraken_classified_fraction,
-    0.0,
-    1.0
-)
-params.sourcetracker2_min_taxon_filter_retained_reads = asInteger(
-    'sourcetracker2_min_taxon_filter_retained_reads',
-    params.sourcetracker2_min_taxon_filter_retained_reads,
-    0
-)
-params.sourcetracker2_min_taxon_filter_retained_fraction = asNumber(
-    'sourcetracker2_min_taxon_filter_retained_fraction',
-    params.sourcetracker2_min_taxon_filter_retained_fraction,
-    0.0,
-    1.0
-)
-params.sourcetracker2_max_unknown_prop = asNumber(
-    'sourcetracker2_max_unknown_prop', params.sourcetracker2_max_unknown_prop, 0.0, 1.0
-)
-params.sourcetracker2_min_top_known_prop = asNumber(
-    'sourcetracker2_min_top_known_prop', params.sourcetracker2_min_top_known_prop, 0.0, 1.0
-)
-params.sourcetracker2_min_top_known_margin = asNumber(
-    'sourcetracker2_min_top_known_margin', params.sourcetracker2_min_top_known_margin, 0.0, 1.0
-)
-
-params.bracken_read_len = params.bracken_read_len.toString().trim().toLowerCase() in ['auto', 'per_sample'] \
-    ? 'auto' \
-    : asInteger('bracken_read_len', params.bracken_read_len, 1)
-
-params.multiqc_title = requireSingleQuotedSafe('multiqc_title', params.multiqc_title)
-params.default_host_group = requireSingleQuotedSafe('default_host_group', params.default_host_group)
-params.host_fasta = requireSingleQuotedSafe('host_fasta', params.host_fasta)
-params.drop_taxids = requireSingleQuotedSafe('drop_taxids', params.drop_taxids)
-params.sourcetracker2_include_panel_roles = requireSingleQuotedSafe(
-    'sourcetracker2_include_panel_roles', params.sourcetracker2_include_panel_roles
-)
-params.sourcetracker2_exclude_panel_roles = requireSingleQuotedSafe(
-    'sourcetracker2_exclude_panel_roles', params.sourcetracker2_exclude_panel_roles
-)
-params.sourcetracker2_exclude_source_envs = requireSingleQuotedSafe(
-    'sourcetracker2_exclude_source_envs', params.sourcetracker2_exclude_source_envs
-)
-params.sourcetracker2_exclude_source_classes = requireSingleQuotedSafe(
-    'sourcetracker2_exclude_source_classes', params.sourcetracker2_exclude_source_classes
-)
-
-
 workflow {
+    // Types, ranges, choices and file existence come from nextflow_schema.json.
+    validateParameters()
+    log.info paramsSummaryLog(workflow)
+
+    // Constraints between parameters, which the schema cannot express.
+    ['min_length_ancient', 'min_length_modern', 'kraken2_min_read_len', 'fragment_pair_gap'].each { name ->
+        if ((params[name] as int) < (params.kraken2_kmer_len as int)) {
+            error "Parameter '${name}' (${params[name]}) must be at least kraken2_kmer_len (${params.kraken2_kmer_len})"
+        }
+    }
+
     def removeHost = params.remove_host
     def runKraken2 = params.run_kraken2
     def runBracken = params.run_bracken

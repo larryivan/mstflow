@@ -1,0 +1,553 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/larryivan/mstflow/main/nextflow_schema.json",
+    "title": "larryivan/mstflow pipeline parameters",
+    "description": "Fragment-aware metagenomic profiling for ancient and modern DNA, with optional source attribution",
+    "type": "object",
+    "$defs": {
+        "input_output_options": {
+            "title": "Input and output",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "description": "Samplesheet (TSV) listing every library.",
+                    "format": "file-path",
+                    "exists": true,
+                    "help_text": "Required columns: `sample_id`, `fastq_1`, `age_group` (`ancient` or `modern`). Add `fastq_2` for paired-end libraries. Relative paths are read relative to the samplesheet. See docs/usage.md."
+                },
+                "outdir": {
+                    "type": "string",
+                    "description": "Directory for results.",
+                    "default": "results",
+                    "format": "directory-path"
+                },
+                "publish_intermediates": {
+                    "type": "boolean",
+                    "description": "Also copy large intermediate FASTQ files to the results directory.",
+                    "default": false
+                },
+                "multiqc_title": {
+                    "type": "string",
+                    "description": "Title shown on the MultiQC report.",
+                    "default": "mstflow",
+                    "pattern": "^[^'\\n\\r]*$"
+                }
+            },
+            "required": [
+                "input"
+            ]
+        },
+        "host_removal_options": {
+            "title": "Host removal",
+            "type": "object",
+            "fa_icon": "fas fa-user-slash",
+            "properties": {
+                "remove_host": {
+                    "type": "boolean",
+                    "description": "Remove reads that align to the host genome.",
+                    "default": true
+                },
+                "host_fasta": {
+                    "type": "string",
+                    "description": "Host FASTA with a BWA index next to it (.amb .ann .bwt .pac .sa).",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^[^'\\n\\r]*$",
+                    "help_text": "Used for every sample whose `host_ref` is empty or `default`. Build the index once with `bwa index host.fa`."
+                },
+                "host_min_mapq": {
+                    "type": "integer",
+                    "description": "Minimum mapping quality for a host alignment to remove a fragment.",
+                    "default": 0,
+                    "minimum": 0,
+                    "help_text": "0 removes a fragment when either mate has any primary host alignment."
+                },
+                "default_host_group": {
+                    "type": "string",
+                    "description": "Host group that the default host FASTA represents.",
+                    "default": "human",
+                    "pattern": "^[^'\\n\\r]*$"
+                },
+                "require_explicit_host_for_nondefault": {
+                    "type": "boolean",
+                    "description": "Require an explicit `host_ref` for samples whose `host_group` differs from the default.",
+                    "default": true
+                },
+                "require_explicit_host_action": {
+                    "type": "boolean",
+                    "description": "Require every samplesheet row to declare `host_action` (remove or skip).",
+                    "default": false
+                },
+                "host_remove_max_forks": {
+                    "type": "integer",
+                    "description": "Maximum concurrent host-alignment tasks.",
+                    "default": 4,
+                    "minimum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "preprocessing_options": {
+            "title": "Read preprocessing",
+            "type": "object",
+            "fa_icon": "fas fa-cut",
+            "properties": {
+                "min_length_modern": {
+                    "type": "integer",
+                    "description": "Minimum read length after trimming, modern libraries.",
+                    "default": 50,
+                    "minimum": 1
+                },
+                "min_length_ancient": {
+                    "type": "integer",
+                    "description": "Minimum fragment length after trimming, ancient libraries.",
+                    "default": 35,
+                    "minimum": 1
+                },
+                "ancient_pe_mode": {
+                    "type": "string",
+                    "description": "How ancient paired-end libraries are counted.",
+                    "default": "collapsed_only",
+                    "enum": [
+                        "collapsed_only",
+                        "all_fragments"
+                    ],
+                    "help_text": "`collapsed_only` keeps merged molecules only. `all_fragments` also keeps complete unmerged pairs, each submitted to Kraken2 as one paired record. See docs/design-notes.md."
+                },
+                "fastp_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to fastp.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "adapterremoval_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to AdapterRemoval.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "fastq_gzip_level": {
+                    "type": "integer",
+                    "description": "Gzip level (0-9) for FASTQ written by the workflow's own helpers.",
+                    "default": 6,
+                    "minimum": 0,
+                    "maximum": 9,
+                    "hidden": true
+                },
+                "fragment_pair_gap": {
+                    "type": "integer",
+                    "description": "Deprecated; affects only the legacy `combine` helper subcommand.",
+                    "default": 100,
+                    "minimum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "kraken2_options": {
+            "title": "Kraken2 classification",
+            "type": "object",
+            "fa_icon": "fas fa-sitemap",
+            "properties": {
+                "run_kraken2": {
+                    "type": "boolean",
+                    "description": "Classify reads with Kraken2.",
+                    "default": true,
+                    "hidden": true
+                },
+                "kraken2_db": {
+                    "type": "string",
+                    "description": "Kraken2 database directory (hash.k2d, opts.k2d, taxo.k2d).",
+                    "format": "directory-path",
+                    "exists": true,
+                    "help_text": "Prebuilt indexes are available from https://benlangmead.github.io/aws-indexes/k2. Bracken needs the `database<N>mers.kmer_distrib` files in the same directory."
+                },
+                "kraken2_confidence": {
+                    "type": "number",
+                    "description": "Kraken2 confidence threshold.",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "kraken2_minimum_hit_groups": {
+                    "type": "integer",
+                    "description": "Kraken2 minimum hit groups.",
+                    "default": 2,
+                    "minimum": 1
+                },
+                "kraken2_kmer_len": {
+                    "type": "integer",
+                    "description": "k-mer length the database was built with.",
+                    "default": 35,
+                    "minimum": 1
+                },
+                "kraken2_min_read_len": {
+                    "type": "integer",
+                    "description": "Shortest read submitted to Kraken2; must be at least `kraken2_kmer_len`.",
+                    "default": 35,
+                    "minimum": 1
+                },
+                "kraken2_use_names": {
+                    "type": "boolean",
+                    "description": "Include taxon names in Kraken2 output.",
+                    "default": true,
+                    "hidden": true
+                },
+                "kraken2_report_minimizer_data": {
+                    "type": "boolean",
+                    "description": "Include minimizer counts in the Kraken2 report.",
+                    "default": true,
+                    "hidden": true
+                },
+                "kraken2_save_read_classifications": {
+                    "type": "boolean",
+                    "description": "Keep per-read Kraken2 classifications (large).",
+                    "default": false
+                },
+                "kraken2_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to Kraken2.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "kraken2_cpus": {
+                    "type": "integer",
+                    "description": "CPUs per Kraken2 task.",
+                    "default": 16,
+                    "minimum": 1
+                },
+                "kraken2_memory": {
+                    "type": "string",
+                    "description": "Memory per Kraken2 task; must hold the whole database.",
+                    "default": "160 GB",
+                    "pattern": "^\\d+(\\.\\d+)?\\s*[KMGT]?B$"
+                },
+                "kraken2_time": {
+                    "type": "string",
+                    "description": "Time limit per Kraken2 task.",
+                    "default": "36h",
+                    "pattern": "^(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d)\\s*)+$"
+                },
+                "kraken2_max_forks": {
+                    "type": "integer",
+                    "description": "Maximum concurrent Kraken2 tasks.",
+                    "default": 1,
+                    "minimum": 1
+                }
+            },
+            "required": [
+                "kraken2_db"
+            ]
+        },
+        "bracken_options": {
+            "title": "Bracken abundance",
+            "type": "object",
+            "fa_icon": "fas fa-chart-bar",
+            "properties": {
+                "run_bracken": {
+                    "type": "boolean",
+                    "description": "Re-estimate abundance with Bracken and build the feature tables.",
+                    "default": true
+                },
+                "bracken_db": {
+                    "type": "string",
+                    "description": "Bracken database directory; defaults to `kraken2_db`.",
+                    "format": "directory-path",
+                    "exists": true,
+                    "hidden": true
+                },
+                "bracken_rank": {
+                    "type": "string",
+                    "description": "Taxonomic rank of the output tables.",
+                    "default": "G",
+                    "enum": [
+                        "D",
+                        "P",
+                        "C",
+                        "O",
+                        "F",
+                        "G",
+                        "S"
+                    ]
+                },
+                "bracken_read_len": {
+                    "type": [
+                        "string",
+                        "integer"
+                    ],
+                    "description": "Bracken read-length model: `auto` picks the nearest available one per sample, or give a length.",
+                    "default": "auto",
+                    "pattern": "^auto$",
+                    "minimum": 1
+                },
+                "bracken_threshold": {
+                    "type": "integer",
+                    "description": "Minimum reads for a taxon to be re-estimated.",
+                    "default": 10,
+                    "minimum": 0
+                },
+                "bracken_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to Bracken.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                }
+            }
+        },
+        "taxon_filter_options": {
+            "title": "Taxon filter",
+            "type": "object",
+            "fa_icon": "fas fa-filter",
+            "properties": {
+                "taxon_filter": {
+                    "type": "string",
+                    "description": "Restrict the filtered tables to bacteria and archaea.",
+                    "default": "none",
+                    "enum": [
+                        "none",
+                        "prokaryote"
+                    ]
+                },
+                "taxdump": {
+                    "type": "string",
+                    "description": "NCBI taxdump directory or nodes.dmp; required for `taxon_filter: prokaryote`.",
+                    "format": "path",
+                    "exists": true
+                },
+                "drop_taxids": {
+                    "type": [
+                        "string",
+                        "integer"
+                    ],
+                    "description": "Comma-separated taxon IDs dropped from every table.",
+                    "default": "0,1",
+                    "pattern": "^[^'\\n\\r]*$"
+                }
+            }
+        },
+        "sourcetracker2_options": {
+            "title": "SourceTracker2 attribution (optional)",
+            "type": "object",
+            "fa_icon": "fas fa-project-diagram",
+            "properties": {
+                "run_sourcetracker2": {
+                    "type": "boolean",
+                    "description": "Attribute sink samples to source environments with SourceTracker2.",
+                    "default": false,
+                    "help_text": "Needs `source_sink` and `model_source_env` (or `category`) columns in the samplesheet."
+                },
+                "sourcetracker2_source_rarefaction_depth": {
+                    "type": "integer",
+                    "description": "Source rarefaction depth (0 disables).",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "sourcetracker2_sink_rarefaction_depth": {
+                    "type": "integer",
+                    "description": "Sink rarefaction depth (0 disables).",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "sourcetracker2_aggregate_by": {
+                    "type": "string",
+                    "description": "Unit that SourceTracker2 models.",
+                    "default": "unit_id",
+                    "enum": [
+                        "sample_id",
+                        "unit_id"
+                    ]
+                },
+                "sourcetracker2_taxon_scope": {
+                    "type": "string",
+                    "description": "Taxa given to SourceTracker2.",
+                    "default": "filtered",
+                    "enum": [
+                        "filtered",
+                        "all"
+                    ]
+                },
+                "sourcetracker2_analysis_label": {
+                    "type": "string",
+                    "description": "Label for this SourceTracker2 analysis; used in file names.",
+                    "default": "default",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                },
+                "sourcetracker2_include_panel_roles": {
+                    "type": "string",
+                    "description": "Only use rows with these `panel_role` values (comma-separated).",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "sourcetracker2_exclude_panel_roles": {
+                    "type": "string",
+                    "description": "Exclude rows with these `panel_role` values (comma-separated).",
+                    "default": "control,holdout",
+                    "pattern": "^[^'\\n\\r]*$"
+                },
+                "sourcetracker2_exclude_source_envs": {
+                    "type": "string",
+                    "description": "Exclude these source environments (comma-separated).",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "sourcetracker2_exclude_source_classes": {
+                    "type": "string",
+                    "description": "Exclude these source classes (comma-separated).",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "sourcetracker2_min_kraken_classified_fraction": {
+                    "type": "number",
+                    "description": "Minimum Kraken2 classified fraction for a sample to enter SourceTracker2.",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "sourcetracker2_min_taxon_filter_retained_reads": {
+                    "type": "integer",
+                    "description": "Minimum reads left after the taxon filter.",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "sourcetracker2_min_taxon_filter_retained_fraction": {
+                    "type": "number",
+                    "description": "Minimum fraction of reads left after the taxon filter.",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "sourcetracker2_max_unknown_prop": {
+                    "type": "number",
+                    "description": "Abstain when the Unknown proportion reaches this value.",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "sourcetracker2_min_top_known_prop": {
+                    "type": "number",
+                    "description": "Abstain when the strongest known source is below this value.",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "sourcetracker2_min_top_known_margin": {
+                    "type": "number",
+                    "description": "Abstain when the top two known sources are closer than this.",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "sourcetracker2_loo": {
+                    "type": "boolean",
+                    "description": "Leave-one-out validation over sources (separate validation runs only).",
+                    "default": false
+                },
+                "sourcetracker2_seed": {
+                    "type": "integer",
+                    "description": "Random seed for Gibbs sampling.",
+                    "default": 1,
+                    "minimum": 0,
+                    "maximum": 2147483647
+                },
+                "sourcetracker2_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to SourceTracker2.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                }
+            }
+        },
+        "container_options": {
+            "title": "Containers",
+            "type": "object",
+            "fa_icon": "fab fa-docker",
+            "properties": {
+                "container_fastqc": {
+                    "type": "string",
+                    "description": "Container image for FastQC.",
+                    "hidden": true
+                },
+                "container_fastp": {
+                    "type": "string",
+                    "description": "Container image for fastp.",
+                    "hidden": true
+                },
+                "container_adapterremoval": {
+                    "type": "string",
+                    "description": "Container image for AdapterRemoval.",
+                    "hidden": true
+                },
+                "container_bwa": {
+                    "type": "string",
+                    "description": "Container image for BWA.",
+                    "hidden": true
+                },
+                "container_kraken2": {
+                    "type": "string",
+                    "description": "Container image for Kraken2.",
+                    "hidden": true
+                },
+                "container_bracken": {
+                    "type": "string",
+                    "description": "Container image for Bracken.",
+                    "hidden": true
+                },
+                "container_biom": {
+                    "type": "string",
+                    "description": "Container image for biom-format.",
+                    "hidden": true
+                },
+                "container_multiqc": {
+                    "type": "string",
+                    "description": "Container image for MultiQC.",
+                    "hidden": true
+                },
+                "container_python_tools": {
+                    "type": "string",
+                    "description": "Container image for the workflow's Python helpers.",
+                    "hidden": true
+                },
+                "container_sourcetracker2": {
+                    "type": "string",
+                    "description": "Container image for SourceTracker2.",
+                    "hidden": true
+                }
+            }
+        }
+    },
+    "allOf": [
+        {
+            "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/host_removal_options"
+        },
+        {
+            "$ref": "#/$defs/preprocessing_options"
+        },
+        {
+            "$ref": "#/$defs/kraken2_options"
+        },
+        {
+            "$ref": "#/$defs/bracken_options"
+        },
+        {
+            "$ref": "#/$defs/taxon_filter_options"
+        },
+        {
+            "$ref": "#/$defs/sourcetracker2_options"
+        },
+        {
+            "$ref": "#/$defs/container_options"
+        }
+    ]
+}
