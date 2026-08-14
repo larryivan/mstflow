@@ -522,6 +522,26 @@
                     "hidden": true
                 }
             }
+        },
+        "sample_qc_options": {
+            "title": "Sample summary flags",
+            "type": "object",
+            "fa_icon": "fas fa-flag",
+            "properties": {
+                "qc_min_classified_reads": {
+                    "type": "integer",
+                    "default": 10000,
+                    "minimum": 0,
+                    "description": "Flag samples with fewer classified molecules than this."
+                },
+                "qc_min_taxa": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 0,
+                    "description": "Flag samples with fewer taxa (at bracken_rank, after the taxon filter) than this.",
+                    "help_text": "Shallow profiles carry little information, and downstream attribution of them is unreliable."
+                }
+            }
         }
     },
     "allOf": [
@@ -545,6 +565,9 @@
         },
         {
             "$ref": "#/$defs/sourcetracker2_options"
+        },
+        {
+            "$ref": "#/$defs/sample_qc_options"
         },
         {
             "$ref": "#/$defs/container_options"

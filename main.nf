@@ -20,6 +20,7 @@ include { MAKE_BIOM } from './modules/make_biom'
 include { SOURCETRACKER2_GIBBS } from './modules/sourcetracker2'
 include { PLOT_SOURCETRACKER2_WITH_UNCERTAINTY } from './modules/plot_sourcetracker2'
 include { MULTIQC_REPORT } from './modules/multiqc'
+include { SUMMARIZE_SAMPLES } from './modules/summarize_samples'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
 
@@ -294,6 +295,7 @@ workflow {
         "${projectDir}/bin/run_sourcetracker2_seeded.py", checkIfExists: true
     )
     def plotSourceTrackerScript = file("${projectDir}/bin/plot_sourcetracker2.py", checkIfExists: true)
+    def summarizeScript = file("${projectDir}/bin/summarize_samples.py", checkIfExists: true)
 
     validator_script_ch = channel.value(validatorScript)
     fragment_helper_ch = channel.value(fragmentHelper)
@@ -305,6 +307,7 @@ workflow {
     sourcetracker2_runner_ch = channel.value(sourceTrackerRunner)
     plot_sourcetracker2_script_ch = channel.value(plotSourceTrackerScript)
     taxdump_nodes_ch = channel.value(taxdumpNodesPath)
+    summarize_script_ch = channel.value(summarizeScript)
 
     def inputMatches = file(params.input, checkIfExists: true)
     inputMatches = inputMatches instanceof List ? inputMatches : [inputMatches]
@@ -509,6 +512,26 @@ workflow {
         .flatten()
         .mix(NORMALIZE_ADAPTERREMOVAL.out.qc)
 
+    // One row per sample: molecules surviving each step, and depth flags.
+    if (runBracken) {
+        summary_inputs_ch = fastp_qc_files
+            .mix(adapterremoval_qc_files)
+            .mix(host_qc_ch)
+            .filter { qcFile ->
+                qcFile.name ==~ /.+\.(fastp\.json|adapterremoval\.log|adapterremoval\.fragment_qc\.tsv|host_removal\.fragment_qc\.tsv)/
+            }
+            .toSortedList { left, right -> left.name <=> right.name }
+        SUMMARIZE_SAMPLES(
+            VALIDATE_METADATA.out.metadata,
+            BUILD_FEATURE_TABLE_WITH_KRAKEN_QC.out.sample_qc,
+            summary_inputs_ch,
+            summarize_script_ch
+        )
+        summary_mqc_ch = SUMMARIZE_SAMPLES.out.multiqc
+    } else {
+        summary_mqc_ch = channel.empty()
+    }
+
     // Sorted so MultiQC always stages the same file into the same qcNN
     // directory, which keeps the report input set and the task cache key
     // independent of task completion order.
@@ -521,7 +544,33 @@ workflow {
         .mix(bracken_qc_ch)
         .mix(table_qc_ch)
         .mix(st_qc_ch)
+        .mix(summary_mqc_ch)
         .toSortedList { left, right -> left.name <=> right.name }
 
     MULTIQC_REPORT(multiqc_files)
+
+    // Printed once the run ends: where the results are and which samples need care.
+    // The handler runs outside the workflow's scope, so it gets plain values.
+    def run = workflow
+    def report = log
+    def outdir = params.outdir
+    def summaryFile = file("${params.outdir}/summary/sample_summary.tsv")
+    run.onComplete {
+        def lines = ['']
+        if (run.success) {
+            lines << "MSTFlow finished in ${run.duration}.".toString()
+            if (summaryFile.exists()) {
+                def rows = summaryFile.splitCsv(header: true, sep: '\t')
+                def flagged = rows.findAll { row -> row.flags != 'ok' }
+                lines << "  ${rows.size()} samples, ${flagged.size()} flagged as too shallow to interpret".toString()
+                flagged.each { row -> lines << "    ${row.sample_id}: ${row.flags}".toString() }
+                lines << "  Summary  ${summaryFile}".toString()
+            }
+            lines << "  Tables   ${outdir}/tables/".toString()
+            lines << "  Report   ${outdir}/qc/multiqc/multiqc_report.html".toString()
+        } else {
+            lines << 'MSTFlow stopped with an error. The message above says why; .nextflow.log has the details.'
+        }
+        report.info lines.join('\n')
+    }
 }
