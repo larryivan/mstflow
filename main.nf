@@ -98,7 +98,10 @@ def requireDirectory(name, value, requiredFiles = []) {
     requiredFiles.each { filename ->
         def required = directory.resolve(filename)
         if (!java.nio.file.Files.isRegularFile(required)) {
-            throw new IllegalArgumentException("${name} is missing required file: ${required}")
+            throw new IllegalArgumentException(
+                "${name} is missing required file: ${required}. It should point at a Kraken2 " +
+                "database directory; prebuilt ones are listed at https://benlangmead.github.io/aws-indexes/k2"
+            )
         }
     }
     return directory
@@ -111,7 +114,9 @@ def requireBrackenDistributions(directory) {
     matches.close()
     if (!foundDistribution) {
         throw new IllegalArgumentException(
-            "bracken_db contains no database<N>mers.kmer_distrib files: ${directory}"
+            "bracken_db contains no database<N>mers.kmer_distrib files: ${directory}. " +
+            "Build one per read length with `bracken-build -d ${directory} -l 100`, " +
+            "or use a prebuilt index, which ships them."
         )
     }
 }
