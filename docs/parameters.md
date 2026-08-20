@@ -1,0 +1,161 @@
+# Parameters
+
+Every option, generated from `nextflow_schema.json`. `nextflow run larryivan/mstflow --help`
+prints the same list; `--help <name>` explains one option. Options marked *advanced* are
+hidden from `--help` unless `--showHidden` is given.
+
+## Input and output
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--input` | Samplesheet (TSV) listing every library. Required columns: `sample_id`, `fastq_1`, `age_group` (`ancient` or `modern`). Add `fastq_2` for paired-end libraries. Relative paths are read relative to the samplesheet. See docs/usage.md. | string | required |
+| `--outdir` | Directory for results. | string | `results` |
+| `--publish_intermediates` | Also copy large intermediate FASTQ files to the results directory. | boolean | `false` |
+| `--multiqc_title` | Title shown on the MultiQC report. | string | `mstflow` |
+
+## Host removal
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--remove_host` | Remove reads that align to the host genome. | boolean | `true` |
+| `--host_fasta` | Host FASTA with a BWA index next to it (.amb .ann .bwt .pac .sa). Used for every sample whose `host_ref` is empty or `default`. Build the index once with `bwa index host.fa`. | string |  |
+| `--host_min_mapq` | Minimum mapping quality for a host alignment to remove a fragment. 0 removes a fragment when either mate has any primary host alignment. | integer | `0` |
+| `--default_host_group` | Host group that the default host FASTA represents. | string | `human` |
+| `--require_explicit_host_for_nondefault` | Require an explicit `host_ref` for samples whose `host_group` differs from the default. | boolean | `true` |
+| `--require_explicit_host_action` | Require every samplesheet row to declare `host_action` (remove or skip). | boolean | `false` |
+
+<details><summary>Advanced</summary>
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--host_remove_max_forks` | Maximum concurrent host-alignment tasks. | integer | `4` |
+
+</details>
+
+## Read preprocessing
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--min_length_modern` | Minimum read length after trimming, modern libraries. | integer | `50` |
+| `--min_length_ancient` | Minimum fragment length after trimming, ancient libraries. | integer | `35` |
+| `--ancient_pe_mode` | How ancient paired-end libraries are counted. `collapsed_only` keeps merged molecules only. `all_fragments` also keeps complete unmerged pairs, each submitted to Kraken2 as one paired record. See docs/design-notes.md. | `collapsed_only` / `all_fragments` | `collapsed_only` |
+
+<details><summary>Advanced</summary>
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--fastp_extra_args` | Extra arguments passed to fastp. | string |  |
+| `--adapterremoval_extra_args` | Extra arguments passed to AdapterRemoval. | string |  |
+| `--fastq_gzip_level` | Gzip level (0-9) for FASTQ written by the workflow's own helpers. | integer | `6` |
+| `--fragment_pair_gap` | Deprecated; affects only the legacy `combine` helper subcommand. | integer | `100` |
+
+</details>
+
+## Kraken2 classification
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--kraken2_db` | Kraken2 database directory (hash.k2d, opts.k2d, taxo.k2d). Prebuilt indexes are available from https://benlangmead.github.io/aws-indexes/k2. Bracken needs the `database<N>mers.kmer_distrib` files in the same directory. | string | required |
+| `--kraken2_confidence` | Kraken2 confidence threshold. | number | `0.05` |
+| `--kraken2_minimum_hit_groups` | Kraken2 minimum hit groups. | integer | `2` |
+| `--kraken2_kmer_len` | k-mer length the database was built with. | integer | `35` |
+| `--kraken2_min_read_len` | Shortest read submitted to Kraken2; must be at least `kraken2_kmer_len`. | integer | `35` |
+| `--kraken2_save_read_classifications` | Keep per-read Kraken2 classifications (large). | boolean | `false` |
+| `--kraken2_cpus` | CPUs per Kraken2 task. | integer | `16` |
+| `--kraken2_memory` | Memory per Kraken2 task; must hold the whole database. | string | `160 GB` |
+| `--kraken2_time` | Time limit per Kraken2 task. | string | `36h` |
+| `--kraken2_max_forks` | Maximum concurrent Kraken2 tasks. | integer | `1` |
+
+<details><summary>Advanced</summary>
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--run_kraken2` | Classify reads with Kraken2. | boolean | `true` |
+| `--kraken2_use_names` | Include taxon names in Kraken2 output. | boolean | `true` |
+| `--kraken2_report_minimizer_data` | Include minimizer counts in the Kraken2 report. | boolean | `true` |
+| `--kraken2_extra_args` | Extra arguments passed to Kraken2. | string |  |
+
+</details>
+
+## Bracken abundance
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--run_bracken` | Re-estimate abundance with Bracken and build the feature tables. | boolean | `true` |
+| `--bracken_rank` | Taxonomic rank of the output tables. | `D` / `P` / `C` / `O` / `F` / `G` / `S` | `G` |
+| `--bracken_read_len` | Bracken read-length model: `auto` picks the nearest available one per sample, or give a length. | string or integer | `auto` |
+| `--bracken_threshold` | Minimum reads for a taxon to be re-estimated. | integer | `10` |
+
+<details><summary>Advanced</summary>
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--bracken_db` | Bracken database directory; defaults to `kraken2_db`. | string |  |
+| `--bracken_extra_args` | Extra arguments passed to Bracken. | string |  |
+
+</details>
+
+## Taxon filter
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--taxon_filter` | Restrict the filtered tables to bacteria and archaea. | `none` / `prokaryote` | `none` |
+| `--taxdump` | NCBI taxdump directory or nodes.dmp; required for `taxon_filter: prokaryote`. | string |  |
+| `--drop_taxids` | Comma-separated taxon IDs dropped from every table. | string or integer | `0,1` |
+
+## SourceTracker2 attribution (optional)
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--run_sourcetracker2` | Attribute sink samples to source environments with SourceTracker2. Needs `source_sink` and `model_source_env` (or `category`) columns in the samplesheet. | boolean | `false` |
+| `--sourcetracker2_source_rarefaction_depth` | Source rarefaction depth (0 disables). | integer | `1000` |
+| `--sourcetracker2_sink_rarefaction_depth` | Sink rarefaction depth (0 disables). | integer | `1000` |
+| `--sourcetracker2_aggregate_by` | Unit that SourceTracker2 models. | `sample_id` / `unit_id` | `unit_id` |
+| `--sourcetracker2_taxon_scope` | Taxa given to SourceTracker2. | `filtered` / `all` | `filtered` |
+| `--sourcetracker2_analysis_label` | Label for this SourceTracker2 analysis; used in file names. | string | `default` |
+| `--sourcetracker2_exclude_panel_roles` | Exclude rows with these `panel_role` values (comma-separated). | string | `control,holdout` |
+| `--sourcetracker2_min_kraken_classified_fraction` | Minimum Kraken2 classified fraction for a sample to enter SourceTracker2. | number | `0.001` |
+| `--sourcetracker2_min_taxon_filter_retained_reads` | Minimum reads left after the taxon filter. | integer | `1000` |
+| `--sourcetracker2_min_taxon_filter_retained_fraction` | Minimum fraction of reads left after the taxon filter. | number | `0.001` |
+| `--sourcetracker2_max_unknown_prop` | Abstain when the Unknown proportion reaches this value. | number | `0.5` |
+| `--sourcetracker2_min_top_known_prop` | Abstain when the strongest known source is below this value. | number | `0.5` |
+| `--sourcetracker2_min_top_known_margin` | Abstain when the top two known sources are closer than this. | number | `0.05` |
+| `--sourcetracker2_loo` | Leave-one-out validation over sources (separate validation runs only). | boolean | `false` |
+| `--sourcetracker2_seed` | Random seed for Gibbs sampling. | integer | `1` |
+
+<details><summary>Advanced</summary>
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--sourcetracker2_include_panel_roles` | Only use rows with these `panel_role` values (comma-separated). | string |  |
+| `--sourcetracker2_exclude_source_envs` | Exclude these source environments (comma-separated). | string |  |
+| `--sourcetracker2_exclude_source_classes` | Exclude these source classes (comma-separated). | string |  |
+| `--sourcetracker2_extra_args` | Extra arguments passed to SourceTracker2. | string |  |
+
+</details>
+
+## Sample summary flags
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--qc_min_classified_reads` | Flag samples with fewer classified molecules than this. | integer | `10000` |
+| `--qc_min_taxa` | Flag samples with fewer taxa (at bracken_rank, after the taxon filter) than this. Shallow profiles carry little information, and downstream attribution of them is unreliable. | integer | `20` |
+
+## Containers
+
+<details><summary>Advanced</summary>
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--container_fastqc` | Container image for FastQC. | string |  |
+| `--container_fastp` | Container image for fastp. | string |  |
+| `--container_adapterremoval` | Container image for AdapterRemoval. | string |  |
+| `--container_bwa` | Container image for BWA. | string |  |
+| `--container_kraken2` | Container image for Kraken2. | string |  |
+| `--container_bracken` | Container image for Bracken. | string |  |
+| `--container_biom` | Container image for biom-format. | string |  |
+| `--container_multiqc` | Container image for MultiQC. | string |  |
+| `--container_python_tools` | Container image for the workflow's Python helpers. | string |  |
+| `--container_sourcetracker2` | Container image for SourceTracker2. | string |  |
+
+</details>

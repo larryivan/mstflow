@@ -6,7 +6,7 @@ channels:
 dependencies:
   # Top-level versions are pinned so a changed solver result cannot silently
   # change the scientific toolchain. Generate an explicit platform lock for
-  # each frozen release; see docs/server_setup.md.
+  # each frozen release; see docs/usage.md#reproducibility.
   - python=3.10.20
   - fastqc=0.12.1
   - multiqc=1.29

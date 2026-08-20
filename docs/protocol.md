@@ -1,4 +1,6 @@
-# MetaSourceFlow Workflow Notes
+# Processing protocol
+
+The manual protocol that MSTFlow automates, step by step.
 
 ## 1. Read QC and Preprocessing
 

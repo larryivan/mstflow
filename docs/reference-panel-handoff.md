@@ -91,20 +91,21 @@ nextflow run "$PIPELINE" \
   -resume
 ```
 
-Slurm run:
+Cluster run, with the scheduler set in your own `site.config`
+(see [usage](usage.md#on-a-cluster)):
 
 ```bash
 nextflow -c "$PWD/site.config" run "$PIPELINE" \
-  -profile slurm_singularity \
+  -profile singularity \
   -params-file "$PWD/params.yml" \
   --input "$PWD/mstflow_input.tsv" \
   -resume
 ```
 
 Keep account, partition, work directory, and other cluster-specific settings
-in `site.config`. Replace `singularity` with `apptainer` in the profile name
-when appropriate. For offline compute nodes and pre-staged SIF files, see
-[`server_setup.md`](server_setup.md#pre-staged-sif-images).
+in `site.config`. Replace `singularity` with `apptainer` when appropriate. For
+offline compute nodes and pre-staged SIF files, see
+[usage](usage.md#on-a-cluster).
 
 An optional container smoke test is:
 
