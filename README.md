@@ -1,222 +1,88 @@
-# mstflow
+<h1 align="center">MSTFlow</h1>
 
-MSTFlow is a Nextflow DSL2 workflow for fragment-aware metagenomic preprocessing, host removal, Kraken2/Bracken profiling, and optional SourceTracker2 source attribution. It supports modern and ancient, paired- and single-end libraries while keeping the biological counting unit explicit.
+<p align="center">
+Metagenomic profiling for ancient and modern DNA that counts molecules, not reads,<br>
+with optional microbial source attribution.
+</p>
 
-## Workflow
+<p align="center">
+  <a href="https://github.com/larryivan/mstflow/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/larryivan/mstflow/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://www.nextflow.io"><img alt="Nextflow ≥ 25.10.4" src="https://img.shields.io/badge/nextflow-%E2%89%A525.10.4-23aa62"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
+</p>
 
-```text
-metadata.tsv
-  -> metadata and reference preflight
-  -> raw FastQC
-  -> fastp (modern) or AdapterRemoval + normalization (ancient)
-  -> BWA alignment + pair-aware host filtering
-  -> cleaned FastQC
-  -> fragment preparation + Kraken2
-  -> per-sample Bracken model selection + Bracken
-  -> count/relative-abundance tables
-  -> optional SourceTracker2
-  -> MultiQC and provenance reports
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/mstflow-workflow-dark.svg">
+  <img alt="Ancient and modern libraries are trimmed on their own branches, then run side by side through host removal with BWA, Kraken2 and Bracken to a genus table, with SourceTracker2 as an optional last step." src="docs/images/mstflow-workflow-light.svg" width="100%">
+</picture>
 
-Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`, matching the molecule-level protocol in `steps.md`. The excluded singleton and unmerged counts are reported. The optional `all_fragments` mode retains all complete molecular fragments (collapsed reads and complete unmerged pairs), preserves pairing through host removal, and submits each surviving fragment as one native Kraken2 `--paired` record. Orphan singletons are quantified but excluded, matching modern paired-end handling.
+## Why MSTFlow
 
-### Why `all_fragments` uses native paired input
+- **Molecules, not reads.** Overlapping ancient read pairs are collapsed into the molecules
+  they came from, and every library is counted the same way, so ancient and modern
+  samples can be compared directly.
+- **Short fragments are not lost.** Mates go to Kraken2 as native pairs, never joined
+  by an `N` spacer that would silently raise the confidence threshold for short ancient
+  fragments. [Why this matters](docs/design-notes.md)
+- **Reproducible by default.** Every tool runs from a container pinned by digest, and
+  each run records tool versions, parameters and the molecules kept at every step.
 
-Kraken2 2.1.6 counts every minimizer position in `total_kmers`, including the ambiguous positions produced by an `N` run, and subtracts only its own mate-pair and reading-frame markers (`src/classify.cc`, `ClassifySequence`). Because `required_score = ceil(confidence * total_kmers)`, concatenating two 40 bp mates with a 100 `N` spacer raises the denominator from 12 native paired positions to 146, and the confidence requirement at 0.05 from 1 hit to 8. Short ancient fragments that native `--paired` classifies are therefore lost. MSTFlow now submits both mates natively and gives each collapsed single-end fragment a placeholder mate shorter than `kraken2_kmer_len`, which contributes exactly zero minimizer positions and so reproduces native single-end classification. Placeholder mates are excluded from informative length, k-mer-equivalent length, and Bracken read-length statistics.
+## Quick start
 
-`kraken2_confidence`'s effective denominator is recorded per sample as `median_kraken_confidence_denominator` in `*.kraken2.read_length.tsv`.
-
-`fragment_pair_gap` is retained for backward compatibility. The workflow no longer concatenates mates, so it now affects only the deprecated `combine` subcommand of `bin/mstflow_fragment_tools.py`.
-
-`--check-names` is not a Kraken2 2.1.6 option. Its Perl wrapper parses long options with `Getopt::Long` and never inspects the parse result, so an unrecognised long option prints `Unknown option: <name>` and classification still succeeds with exit status 0. MSTFlow therefore rejects `--check-names` during parameter validation, verifies paired record counts, normalised mate identifiers, and mate ordering in `bin/mstflow_fragment_tools.py` before Kraken2 starts, and fails the task if Kraken2 reports that it ignored any option.
-
-## Requirements
-
-- Nextflow 25.10.4 or newer
-- Bash
-- one dependency backend: Docker, Singularity, Apptainer, or Mamba/Conda
-- a BWA-indexed host FASTA when `remove_host: true`
-- a Kraken2 database when `run_kraken2: true`
-- matching Bracken distributions when `run_bracken: true`
-
-The container profiles use a process-level image for each tool family. Every
-default image is pinned by immutable OCI digest in
-[`containers.lock.tsv`](containers.lock.tsv); Python normalization is kept out
-of the AdapterRemoval, BWA, Kraken2, and Bracken processes so those images
-remain single-purpose and independently updatable.
-The locked images target `linux/amd64`. ARM workstations therefore need an
-amd64-compatible container runtime/emulation layer; Linux/amd64 execution is
-recommended for production.
-
-Conda remains open-source software. The Conda profiles are supported with
-[Miniforge](https://github.com/conda-forge/miniforge), the community
-conda-forge distribution that provides Mamba. The primary Conda tools are
-version-pinned in [`envs/mstflow.yml`](envs/mstflow.yml), while SourceTracker
-uses its separate compatibility environment in
-[`envs/sourcetracker2.yml`](envs/sourcetracker2.yml).
-
-## Run
-
-For the four-file reference-panel handoff, see the
-[container quick start](docs/container_quickstart.md).
-
-Run locally with the pinned Conda environments:
+With [Nextflow](https://www.nextflow.io/docs/latest/install.html) ≥ 25.10.4 and Docker:
 
 ```bash
-nextflow run . -profile conda -params-file /absolute/path/to/params.yml -resume
+nextflow run larryivan/mstflow -profile test,docker
 ```
 
-Run locally with a container engine:
+This runs every step on a small bundled dataset in about a minute once the containers
+are downloaded. Nothing else to install or download.
+
+## Your own data
+
+A samplesheet, saved as a tab-separated file with one row per library:
+
+| sample_id | fastq_1 | fastq_2 | age_group |
+|---|---|---|---|
+| bone_01 | reads/bone_01_R1.fastq.gz | reads/bone_01_R2.fastq.gz | ancient |
+| gut_01 | reads/gut_01.fastq.gz | | modern |
+
+Then point MSTFlow at a Kraken2 database ([prebuilt indexes](https://benlangmead.github.io/aws-indexes/k2)
+include what Bracken needs) and a BWA-indexed host genome:
 
 ```bash
-nextflow run . -profile docker -params-file /absolute/path/to/params.yml -resume
-nextflow run . -profile singularity -params-file /absolute/path/to/params.yml -resume
-nextflow run . -profile apptainer -params-file /absolute/path/to/params.yml -resume
+nextflow run larryivan/mstflow -profile docker \
+    --input samplesheet.tsv \
+    --kraken2_db k2_standard/ \
+    --host_fasta chm13v2.0.fa
 ```
 
-Portable Slurm profiles are explicit about the dependency backend:
+`--help` lists the options. Singularity, Apptainer and Conda work in place of Docker.
 
-```bash
-nextflow run . -profile slurm_singularity -params-file /absolute/path/to/params.yml -resume
-nextflow run . -profile slurm_apptainer -params-file /absolute/path/to/params.yml -resume
-nextflow run . -profile slurm_conda -params-file /absolute/path/to/params.yml -resume
-```
+## What you get
 
-The historical `slurm` name remains a backward-compatible alias for
-`slurm_conda`.
+`results/summary/sample_summary.tsv` follows each sample through the workflow, here from
+the test run:
 
-Site policies belong in an external configuration supplied with Nextflow's global `-c` option; they are intentionally not hard-coded in this repository. See [`docs/server_setup.md`](docs/server_setup.md) for portable server setup, reference validation, resource tuning, and provenance guidance.
+| sample_id | age | input | after host removal | classified | genera | flags |
+|---|---|--:|--:|--:|--:|---|
+| ancient_pe | ancient | 3,000 | 2,093 | 69.8% | 3 | ok |
+| ancient_se | ancient | 3,000 | 2,407 | 68.3% | 3 | ok |
+| modern_pe | modern | 3,000 | 2,404 | 88.0% | 2 | few_genera |
+| modern_se | modern | 3,000 | 2,706 | 78.7% | 3 | ok |
 
-## Tests
+Genus abundance tables for all samples are in `results/tables/`, and every QC metric
+in `results/qc/multiqc/multiqc_report.html`.
 
-Run the self-contained stub DAG test without installing scientific tools:
+## Documentation
 
-```bash
-bash examples/run_tiny_stub.sh
-```
+[Usage](docs/usage.md) · [Parameters](docs/parameters.md) · [Output](docs/output.md) ·
+[Design notes](docs/design-notes.md) · [Troubleshooting](docs/troubleshooting.md)
 
-Stub mode validates workflow wiring and output contracts; it does not validate real FastQC, BWA, Kraken2, Bracken, or SourceTracker2 behavior.
+## Citation
 
-Run the Python and Nextflow contract suite with:
+Please cite MSTFlow as given in [CITATION.cff](CITATION.cff), together with the tools it
+runs: fastp, AdapterRemoval, BWA, Kraken2, Bracken, FastQC, MultiQC, and SourceTracker2 if
+used.
 
-```bash
-python -m unittest discover -s tests -v
-```
-
-## Metadata
-
-The input must resolve to exactly one tab-delimited file. Required columns are:
-
-| column | accepted value |
-| --- | --- |
-| `sample_id` | unique, filesystem-safe sample identifier |
-| `fastq_1` | absolute R1/SE FASTQ path |
-| `fastq_2` | absolute R2 path for PE; `NA` for SE |
-| `layout` | `PE` or `SE` |
-| `age_group` | `modern` or `ancient` |
-
-Optional analysis columns include:
-
-| column | purpose |
-| --- | --- |
-| `preprocess_mode` | normally `auto` |
-| `host_action` | `remove` or `skip`; omitted rows retain the historical `remove` behavior |
-| `host_ref` | sample-specific indexed FASTA, or `default` |
-| `host_group` | biological host group; non-human groups require explicit `host_ref` by default |
-| `source_sink` | exactly `source` or `sink` for SourceTracker2 |
-| `model_source_env` | source environment label; sinks use `NA` |
-| `unit_id` | biological unit used to detect duplicate/run relationships |
-| `panel_role`, `panel_layer`, `category` | preserved reference-panel design fields |
-
-SourceTracker runs require complete, explicit source/sink assignments. Controls, holdouts, NO_BONE experiments, and production reference panels should be separate manifests rather than silently mixing roles.
-
-## Core parameters
-
-```yaml
-input: /absolute/path/to/metadata.tsv
-outdir: /absolute/path/to/results
-
-remove_host: true
-host_fasta: /absolute/path/to/chm13.fa
-host_remove_max_forks: 4
-host_min_mapq: 0
-default_host_group: human
-require_explicit_host_for_nondefault: true
-require_explicit_host_action: false
-
-run_kraken2: true
-kraken2_db: /absolute/path/to/k2_pluspf_20260226
-kraken2_kmer_len: 35
-kraken2_min_read_len: 35
-kraken2_confidence: 0.05
-kraken2_minimum_hit_groups: 2
-kraken2_use_names: true
-kraken2_report_minimizer_data: true
-kraken2_save_read_classifications: false
-kraken2_max_forks: 1
-kraken2_cpus: 16
-kraken2_memory: 160 GB
-kraken2_time: 36h
-
-run_bracken: true
-bracken_db: /absolute/path/to/k2_pluspf_20260226
-bracken_rank: G
-bracken_read_len: auto
-
-taxon_filter: prokaryote
-taxdump: /absolute/path/to/taxdump
-
-ancient_pe_mode: collapsed_only
-fastq_gzip_level: 6
-publish_intermediates: false
-
-run_sourcetracker2: false
-sourcetracker2_aggregate_by: unit_id
-sourcetracker2_taxon_scope: filtered
-sourcetracker2_analysis_label: production
-sourcetracker2_exclude_panel_roles: "control,holdout"
-sourcetracker2_min_kraken_classified_fraction: 0.001
-sourcetracker2_min_taxon_filter_retained_reads: 1000
-sourcetracker2_min_taxon_filter_retained_fraction: 0.001
-sourcetracker2_max_unknown_prop: 0.5
-sourcetracker2_min_top_known_prop: 0.5
-sourcetracker2_min_top_known_margin: 0.05
-sourcetracker2_loo: false
-sourcetracker2_seed: 1
-```
-
-`bracken_read_len: auto` selects the nearest available `database<N>mers.kmer_distrib` per sample from the median observed single-read length and records the choice. For paired-end data, each mate contributes one read-length observation; the two mate lengths are never added together. A positive integer forces a model and fails if that distribution is absent.
-
-If a valid Kraken report yields no estimate at the requested Bracken rank and `bracken_threshold`, MSTFlow retains the sample column with zero estimated counts, emits a zero-root Bracken report, and records `zero_estimates/no_estimates_at_requested_rank_threshold` in its per-sample status file. This means only that Bracken produced no estimate under the declared settings; it does not establish biological absence. The original Kraken report remains unchanged in the Kraken outputs. MSTFlow does not silently lower the threshold or invent an abundance estimate, and every other Bracken failure remains fatal.
-
-`kraken2_min_read_len` must be at least `kraken2_kmer_len`. The default Kraken confidence and minimum-hit-group settings are explicit so sources and sinks cannot silently use different classifier defaults. Per-read classifications are disabled by default; reports and downstream Bracken inputs are retained.
-
-`host_min_mapq: 0` removes an entire fragment when either mate has any primary host alignment. A threshold such as 20 is suitable only as a separately declared sensitivity analysis. Minimizer data and taxon names are enabled in the Kraken QC report; MSTFlow also emits a Bracken-compatible six-column report.
-
-`require_explicit_host_for_nondefault: true` prevents a non-human `host_group` from silently using the default human reference. Each such sample must provide its own indexed `host_ref`.
-
-`host_action: remove` sends the sample through BWA host subtraction. `host_action: skip` bypasses BWA and passes the preprocessed reads directly to clean-read QC and classification; skip rows must use `host_ref: NA`. Manifests that omit `host_action` remain backward compatible and default to `remove`. For a new mixed host-aware run, set `require_explicit_host_action: true` so every row must declare its policy.
-
-Kraken memory depends on the selected database. The CPU, memory, time, and concurrency defaults are explicit and should be overridden after measuring the intended database and executor. Host removal is capped at four concurrent tasks by default to control repeated index I/O.
-
-`fastq_gzip_level` (0-9, default 6) sets the compression level for FASTQ written by `bin/mstflow_fragment_tools.py`, matching the AdapterRemoval and `gzip(1)` defaults instead of Python's level 9. It changes only the compressed representation: decompressed FASTQ content, fragment membership, and counts are unaffected. Lower it towards 1 to trade roughly 10% more scratch space for markedly faster host-removal and Kraken input writes; level 0 stores without compressing. FASTQ written by the helper pins the GZIP header timestamp, so repeated writes to the same output basename are byte-identical; different basenames remain encoded in the GZIP header.
-
-SourceTracker defaults to biological-unit aggregation, filtered taxa, and explicit QC. Complete units are validated and filtered as a whole, so a conflicting or poor lane cannot leave a partial unit. `control` and `holdout` panel roles are excluded before modeling; clear or replace `sourcetracker2_exclude_panel_roles` only in a separately labelled validation run when one of those roles is intentionally needed. Assignments abstain when Unknown is at least 0.5, the strongest known source is below 0.5, the top sources tie, or their margin is below 0.05. SourceTracker2 2.0.1 is run in one process with a recorded `sourcetracker2_seed` for reproducibility. Set `sourcetracker2_loo: true` in a separately labelled, source-only validation run, set `sourcetracker2_source_rarefaction_depth: 0`, and retain at least two independent analysis units per source environment. In LOO, MSTFlow deterministically rarefies each unit to `sourcetracker2_sink_rarefaction_depth` before SourceTracker, then disables both buggy upstream rarefaction paths.
-
-`publish_intermediates: false` keeps large FASTQ and per-read intermediates in the resumable Nextflow work directory instead of duplicating them into the results tree.
-
-## Outputs
-
-```text
-results/
-├── bracken/
-├── kraken2/
-├── qc/
-├── source_attribution/
-├── tables/
-└── pipeline_info/
-```
-
-Important deliverables include Bracken counts and relative-abundance tables, AdapterRemoval/host/Kraken fragment QC, Kraken minimizer and read-length summaries, per-sample Bracken read-length selections, SourceTracker mixing proportions when enabled, MultiQC, and Nextflow trace/report/timeline files.
-
-Run outputs, work directories, local params, downloaded data, databases, and scheduler logs are excluded by `.gitignore`. Commit source/configuration changes only; archive run provenance with the scientific analysis rather than in the code repository.
+MSTFlow is released under the [MIT licence](LICENSE).
