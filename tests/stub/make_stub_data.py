@@ -4,8 +4,9 @@ import os
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-TEST_DIR = ROOT / "examples" / "test_data"
+# Wiring-only data for tests/stub/run.sh. Generated on demand and git-ignored.
+HERE = Path(__file__).resolve().parent
+TEST_DIR = HERE / "data"
 READ_DIR = TEST_DIR / "reads"
 REF_DIR = TEST_DIR / "refs"
 KRAKEN_DIR = TEST_DIR / "kraken2_stub_db"
@@ -98,10 +99,10 @@ def main():
         [("ancient_se_host", HOST[:54]), ("ancient_se_nonhost", NONHOST_C[:54])],
     )
 
-    write_metadata(ROOT / "examples" / "metadata.tiny.tsv")
+    write_metadata(TEST_DIR / "metadata.tsv")
 
     print(f"Wrote tiny test data under {TEST_DIR}")
-    print(f"Metadata: {ROOT / 'examples' / 'metadata.tiny.tsv'}")
+    print(f"Metadata: {TEST_DIR / 'metadata.tsv'}")
     print(f"Host FASTA: {REF_DIR / 'chm13_tiny.fa'}")
 
 

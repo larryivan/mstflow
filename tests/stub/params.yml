@@ -1,8 +1,8 @@
-input: examples/metadata.tiny.tsv
-outdir: results/tiny_stub
+input: tests/stub/data/metadata.tsv
+outdir: results/stub
 
 remove_host: true
-host_fasta: examples/test_data/refs/chm13_tiny.fa
+host_fasta: tests/stub/data/refs/chm13_tiny.fa
 host_remove_max_forks: 4
 host_min_mapq: 0
 default_host_group: human
@@ -10,7 +10,7 @@ require_explicit_host_for_nondefault: true
 require_explicit_host_action: true
 
 run_kraken2: true
-kraken2_db: examples/test_data/kraken2_stub_db
+kraken2_db: tests/stub/data/kraken2_stub_db
 kraken2_kmer_len: 35
 kraken2_min_read_len: 35
 kraken2_confidence: 0.05
@@ -20,7 +20,7 @@ kraken2_report_minimizer_data: true
 kraken2_save_read_classifications: false
 
 run_bracken: true
-bracken_db: examples/test_data/kraken2_stub_db
+bracken_db: tests/stub/data/kraken2_stub_db
 bracken_rank: G
 bracken_read_len: auto
 bracken_threshold: 1

@@ -37,9 +37,8 @@ opts.k2d
 taxo.k2d
 database*.idx
 
-# Generated tiny test data
-examples/test_data/
-examples/metadata.tiny.tsv
+# Generated stub-test data (tests/stub/make_stub_data.py)
+tests/stub/data/
 
 # Sequencing files
 *.fastq

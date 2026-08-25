@@ -111,9 +111,9 @@ An optional container smoke test is:
 
 ```bash
 cd "$PIPELINE"
-python3 bin/create_tiny_test_data.py
+python3 tests/stub/make_stub_data.py
 nextflow run . -profile singularity,test \
-  -params-file examples/params.tiny.stub.yml -stub-run -resume
+  -params-file tests/stub/params.yml -stub-run -resume
 ```
 
 ## 4. Results to return
