@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit and contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install matplotlib numpy
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: '25.10.4'
+      - run: python -m unittest discover -s tests -v
+      - run: bash tests/stub/run.sh
+
+  test-profile:
+    name: Real run on test data (Nextflow ${{ matrix.nextflow }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        nextflow: ['25.10.4', 'latest-stable']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: ${{ matrix.nextflow }}
+      - run: nextflow run ${{ github.workspace }} -profile test,docker --outdir results
+      - name: Check the sample summary
+        run: |
+          test "$(tail -n +2 results/summary/sample_summary.tsv | wc -l)" -eq 4
+          grep -q "modern_pe.*few_genera" results/summary/sample_summary.tsv
