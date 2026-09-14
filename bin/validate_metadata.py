@@ -321,15 +321,17 @@ def main():
                 # invalid value as an accidental skip.
                 host_action = "remove"
 
-            host_ref = norm(row.get("host_ref")) or "default"
+            requested_host_ref = norm(row.get("host_ref"))
+            host_ref = requested_host_ref or "default"
             requested_host_group = norm(row.get("host_group")).lower()
             host_group = (
                 "none" if host_action == "skip" else default_host_group
             ) if is_na(requested_host_group) else requested_host_group
             if host_action == "skip":
-                if not is_na(host_ref):
+                if not is_na(requested_host_ref):
                     errors.append(
-                        f"line {line_no}: host_action=skip requires host_ref=NA"
+                        f"line {line_no}: host_action=skip conflicts with "
+                        f"host_ref={requested_host_ref}; leave host_ref empty"
                     )
                 host_ref = "NA"
             else:

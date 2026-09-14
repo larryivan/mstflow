@@ -114,7 +114,14 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 check=False,
             )
             self.assertNotEqual(conflicted.returncode, 0)
-            self.assertIn("host_action=skip requires host_ref=NA", conflicted.stderr)
+            self.assertIn("host_action=skip conflicts with host_ref=default", conflicted.stderr)
+
+            # Without a host_ref column, skip needs nothing else.
+            no_ref_fields = [f for f in fields if f != "host_ref"]
+            no_ref = {k: v for k, v in base.items() if k != "host_ref"}
+            write_tsv(metadata, no_ref_fields, [no_ref])
+            run_script("validate_metadata.py", "--input", metadata, "--output", output)
+            self.assertEqual(read_tsv(output)[0]["host_ref"], "NA")
 
             remove = dict(
                 base,
