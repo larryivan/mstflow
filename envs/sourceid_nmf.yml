@@ -1,0 +1,12 @@
+name: mstflow-sourceid-nmf
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  # SourceID-NMF's own code is fetched at run time; these are the libraries it needs,
+  # at the versions in the attribution container (containers/attribution).
+  - python=3.12
+  - numpy=1.26.4
+  - pandas=2.2.3
+  - scipy=1.14.1
+  - tqdm=4.67.1
