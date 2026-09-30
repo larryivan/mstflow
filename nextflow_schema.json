@@ -12,9 +12,8 @@
             "properties": {
                 "input": {
                     "type": "string",
-                    "description": "Samplesheet (TSV) listing every library.",
-                    "format": "file-path",
-                    "exists": true,
+                    "description": "Samplesheet (TSV) listing every library; a local path or a URL.",
+                    "format": "path",
                     "help_text": "Required columns: `sample_id`, `fastq_1`, `age_group` (`ancient` or `modern`). Add `fastq_2` for paired-end libraries. Relative paths are read relative to the samplesheet. See docs/usage.md."
                 },
                 "outdir": {
@@ -51,9 +50,8 @@
                 },
                 "host_fasta": {
                     "type": "string",
-                    "description": "Host FASTA with a BWA index next to it (.amb .ann .bwt .pac .sa).",
-                    "format": "file-path",
-                    "exists": true,
+                    "description": "Host FASTA with its BWA index (.amb .ann .bwt .pac .sa) next to it; a local path or a URL.",
+                    "format": "path",
                     "pattern": "^[^'\\n\\r]*$",
                     "help_text": "Used for every sample whose `host_ref` is empty or `default`. Build the index once with `bwa index host.fa`."
                 },
@@ -147,6 +145,47 @@
                 }
             }
         },
+        "classifier_options": {
+            "title": "Classifier",
+            "type": "object",
+            "fa_icon": "fas fa-microscope",
+            "description": "Kraken2 with Bracken, or KrakenUniq.",
+            "properties": {
+                "classifier": {
+                    "type": "string",
+                    "description": "Which classifier to use.",
+                    "default": "kraken2",
+                    "enum": [
+                        "kraken2",
+                        "krakenuniq"
+                    ],
+                    "help_text": "`kraken2` classifies with Kraken2 and re-estimates abundances with Bracken. `krakenuniq` uses KrakenUniq, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Use one classifier for sources and sinks alike."
+                },
+                "krakenuniq_db": {
+                    "type": "string",
+                    "description": "KrakenUniq database: a directory with database.kdb, database.idx and taxDB, or a .tar.gz of one; local or a URL.",
+                    "format": "path",
+                    "pattern": "^[^'\\n\\r]*$"
+                },
+                "krakenuniq_preload_size": {
+                    "type": "string",
+                    "description": "Load the KrakenUniq database in chunks of this size, e.g. 16G; unset loads it whole.",
+                    "pattern": "^[0-9]+[KMG]$"
+                },
+                "krakenuniq_min_kmers": {
+                    "type": "integer",
+                    "description": "Remove a taxon from a sample when its reads cover fewer unique k-mers.",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "krakenuniq_min_reads": {
+                    "type": "integer",
+                    "description": "Remove a taxon from a sample when it has fewer reads.",
+                    "default": 200,
+                    "minimum": 0
+                }
+            }
+        },
         "kraken2_options": {
             "title": "Kraken2 classification",
             "type": "object",
@@ -160,10 +199,9 @@
                 },
                 "kraken2_db": {
                     "type": "string",
-                    "description": "Kraken2 database directory (hash.k2d, opts.k2d, taxo.k2d).",
-                    "format": "directory-path",
-                    "exists": true,
-                    "help_text": "Prebuilt indexes are available from https://benlangmead.github.io/aws-indexes/k2. Bracken needs the `database<N>mers.kmer_distrib` files in the same directory."
+                    "description": "Kraken2 database: a directory (hash.k2d, opts.k2d, taxo.k2d) or a .tar.gz of one, local or a URL. Required with the default classifier.",
+                    "format": "path",
+                    "help_text": "Prebuilt indexes from https://benlangmead.github.io/aws-indexes/k2 can be given as the downloaded .tar.gz or its URL; the workflow unpacks it. Bracken needs the `database<N>mers.kmer_distrib` files, which prebuilt indexes include."
                 },
                 "kraken2_confidence": {
                     "type": "number",
@@ -202,6 +240,13 @@
                     "default": true,
                     "hidden": true
                 },
+                "kraken2_min_distinct_minimizers": {
+                    "type": "integer",
+                    "description": "Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all).",
+                    "default": 0,
+                    "minimum": 0,
+                    "help_text": "False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_minimizer_filter.tsv`. See docs/usage.md."
+                },
                 "kraken2_save_read_classifications": {
                     "type": "boolean",
                     "description": "Keep per-read Kraken2 classifications (large).",
@@ -238,10 +283,7 @@
                     "default": 1,
                     "minimum": 1
                 }
-            },
-            "required": [
-                "kraken2_db"
-            ]
+            }
         },
         "bracken_options": {
             "title": "Bracken abundance",
@@ -315,9 +357,9 @@
                 },
                 "taxdump": {
                     "type": "string",
-                    "description": "NCBI taxdump directory or nodes.dmp; required for `taxon_filter: prokaryote`.",
+                    "description": "NCBI taxdump: a directory with nodes.dmp (and names.dmp, for SourcePredict), or the nodes.dmp file itself, with the others beside it; local or a URL.",
                     "format": "path",
-                    "exists": true
+                    "help_text": "Needed for `--taxon_filter prokaryote` and for SourcePredict. Use the snapshot the classifier database was built from."
                 },
                 "drop_taxids": {
                     "type": [
@@ -330,138 +372,298 @@
                 }
             }
         },
-        "sourcetracker2_options": {
-            "title": "SourceTracker2 attribution (optional)",
+        "attribution_options": {
+            "title": "Source attribution (optional)",
             "type": "object",
             "fa_icon": "fas fa-project-diagram",
+            "description": "Estimate where each sink's microbes came from. Needs `source_sink` and `model_source_env` columns in the samplesheet.",
             "properties": {
-                "run_sourcetracker2": {
-                    "type": "boolean",
-                    "description": "Attribute sink samples to source environments with SourceTracker2.",
-                    "default": false,
-                    "help_text": "Needs `source_sink` and `model_source_env` (or `category`) columns in the samplesheet."
-                },
-                "sourcetracker2_source_rarefaction_depth": {
-                    "type": "integer",
-                    "description": "Source rarefaction depth (0 disables).",
-                    "default": 1000,
-                    "minimum": 0
-                },
-                "sourcetracker2_sink_rarefaction_depth": {
-                    "type": "integer",
-                    "description": "Sink rarefaction depth (0 disables).",
-                    "default": 1000,
-                    "minimum": 0
-                },
-                "sourcetracker2_aggregate_by": {
+                "attribution_methods": {
                     "type": "string",
-                    "description": "Unit that SourceTracker2 models.",
+                    "description": "Methods to run, comma-separated; empty runs none.",
+                    "default": "",
+                    "pattern": "^((sourcetracker2|feast|fastst|sourceid_nmf|sourcepredict)(,(sourcetracker2|feast|fastst|sourceid_nmf|sourcepredict))*)?$",
+                    "help_text": "`sourcetracker2`, `feast`, `fastst` (experimental), `sourceid_nmf` and `sourcepredict`. All read the same table, so their results can be compared; see docs/attribution.md."
+                },
+                "attribution_label": {
+                    "type": "string",
+                    "description": "Name of this analysis; results go to `attribution/<label>/`.",
+                    "default": "default",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                },
+                "attribution_aggregate_by": {
+                    "type": "string",
+                    "description": "Unit each method models: each library, or all runs sharing a `unit_id`.",
                     "default": "unit_id",
                     "enum": [
                         "sample_id",
                         "unit_id"
                     ]
                 },
-                "sourcetracker2_taxon_scope": {
+                "attribution_taxon_scope": {
                     "type": "string",
-                    "description": "Taxa given to SourceTracker2.",
+                    "description": "Taxa given to the methods: after the taxon filter, or all.",
                     "default": "filtered",
                     "enum": [
                         "filtered",
                         "all"
                     ]
                 },
-                "sourcetracker2_analysis_label": {
-                    "type": "string",
-                    "description": "Label for this SourceTracker2 analysis; used in file names.",
-                    "default": "default",
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                "attribution_cv": {
+                    "type": "boolean",
+                    "description": "Also score every method by cross-validation on the sources.",
+                    "default": false,
+                    "help_text": "Sources sharing a value of `attribution_cv_group` are held out together, run as sinks of known origin, and scored. Results go to `attribution/<label>/evaluation/`."
                 },
-                "sourcetracker2_include_panel_roles": {
+                "attribution_cv_group": {
+                    "type": "string",
+                    "description": "Samplesheet column whose values are held out together in cross-validation.",
+                    "default": "project",
+                    "help_text": "Holding out whole studies tests a method on studies it has not seen; libraries without a value are held out one by one."
+                },
+                "attribution_max_unknown": {
+                    "type": "number",
+                    "description": "Abstain when the unknown share reaches this value.",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "attribution_min_top_known": {
+                    "type": "number",
+                    "description": "Abstain when the leading known source is below this value.",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "attribution_min_margin": {
+                    "type": "number",
+                    "description": "Abstain when the two leading known sources are closer than this.",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "attribution_seed": {
+                    "type": "integer",
+                    "description": "Random seed for every method.",
+                    "default": 1,
+                    "minimum": 0,
+                    "maximum": 2147483647
+                },
+                "attribution_exclude_panel_roles": {
+                    "type": "string",
+                    "description": "Leave out rows with these `panel_role` values (comma-separated).",
+                    "default": "control,holdout",
+                    "pattern": "^[^'\\n\\r]*$"
+                },
+                "attribution_include_panel_roles": {
                     "type": "string",
                     "description": "Only use rows with these `panel_role` values (comma-separated).",
                     "default": "",
                     "pattern": "^[^'\\n\\r]*$",
                     "hidden": true
                 },
-                "sourcetracker2_exclude_panel_roles": {
+                "attribution_exclude_source_envs": {
                     "type": "string",
-                    "description": "Exclude rows with these `panel_role` values (comma-separated).",
-                    "default": "control,holdout",
-                    "pattern": "^[^'\\n\\r]*$"
-                },
-                "sourcetracker2_exclude_source_envs": {
-                    "type": "string",
-                    "description": "Exclude these source environments (comma-separated).",
+                    "description": "Leave out these source environments (comma-separated).",
                     "default": "",
                     "pattern": "^[^'\\n\\r]*$",
                     "hidden": true
                 },
-                "sourcetracker2_exclude_source_classes": {
+                "attribution_exclude_source_classes": {
                     "type": "string",
-                    "description": "Exclude these source classes (comma-separated).",
+                    "description": "Leave out these source classes (comma-separated).",
                     "default": "",
                     "pattern": "^[^'\\n\\r]*$",
                     "hidden": true
                 },
-                "sourcetracker2_min_kraken_classified_fraction": {
+                "attribution_min_classified_fraction": {
                     "type": "number",
-                    "description": "Minimum Kraken2 classified fraction for a sample to enter SourceTracker2.",
+                    "description": "Leave out libraries with a smaller Kraken2 classified fraction.",
                     "default": 0.001,
                     "minimum": 0,
-                    "maximum": 1
+                    "maximum": 1,
+                    "hidden": true
                 },
-                "sourcetracker2_min_taxon_filter_retained_reads": {
+                "attribution_min_retained_reads": {
                     "type": "integer",
-                    "description": "Minimum reads left after the taxon filter.",
+                    "description": "Leave out libraries with fewer reads after the taxon filter.",
+                    "default": 1000,
+                    "minimum": 0,
+                    "hidden": true
+                },
+                "attribution_min_retained_fraction": {
+                    "type": "number",
+                    "description": "Leave out libraries keeping a smaller fraction of reads after the taxon filter.",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "sourcetracker2_options": {
+            "title": "SourceTracker2",
+            "type": "object",
+            "fa_icon": "fas fa-sliders-h",
+            "properties": {
+                "sourcetracker2_source_rarefaction_depth": {
+                    "type": "integer",
+                    "description": "Rarefy pooled sources to this depth (0: no rarefaction).",
                     "default": 1000,
                     "minimum": 0
                 },
-                "sourcetracker2_min_taxon_filter_retained_fraction": {
-                    "type": "number",
-                    "description": "Minimum fraction of reads left after the taxon filter.",
-                    "default": 0.001,
-                    "minimum": 0,
-                    "maximum": 1
-                },
-                "sourcetracker2_max_unknown_prop": {
-                    "type": "number",
-                    "description": "Abstain when the Unknown proportion reaches this value.",
-                    "default": 0.5,
-                    "minimum": 0,
-                    "maximum": 1
-                },
-                "sourcetracker2_min_top_known_prop": {
-                    "type": "number",
-                    "description": "Abstain when the strongest known source is below this value.",
-                    "default": 0.5,
-                    "minimum": 0,
-                    "maximum": 1
-                },
-                "sourcetracker2_min_top_known_margin": {
-                    "type": "number",
-                    "description": "Abstain when the top two known sources are closer than this.",
-                    "default": 0.05,
-                    "minimum": 0,
-                    "maximum": 1
-                },
-                "sourcetracker2_loo": {
-                    "type": "boolean",
-                    "description": "Leave-one-out validation over sources (separate validation runs only).",
-                    "default": false
-                },
-                "sourcetracker2_seed": {
+                "sourcetracker2_sink_rarefaction_depth": {
                     "type": "integer",
-                    "description": "Random seed for Gibbs sampling.",
-                    "default": 1,
-                    "minimum": 0,
-                    "maximum": 2147483647
+                    "description": "Rarefy sinks to this depth (0: no rarefaction).",
+                    "default": 1000,
+                    "minimum": 0
                 },
-                "sourcetracker2_extra_args": {
+                "sourcetracker2_alpha2": {
+                    "type": "number",
+                    "description": "Prior on the unknown source.",
+                    "default": 0.001,
+                    "exclusiveMinimum": 0,
+                    "help_text": "SourceTracker2's default. With few taxa per sink the unknown source can absorb sinks that clearly match a source; 0.1, the default of the original SourceTracker, guards against that. See docs/attribution.md."
+                },
+                "sourcetracker2_alpha1": {
+                    "type": "number",
+                    "description": "Prior on the known sources.",
+                    "default": 0.001,
+                    "exclusiveMinimum": 0,
+                    "hidden": true
+                },
+                "sourcetracker2_beta": {
+                    "type": "number",
+                    "description": "Prior on the mixing proportions.",
+                    "default": 10,
+                    "exclusiveMinimum": 0,
+                    "hidden": true
+                },
+                "sourcetracker2_restarts": {
+                    "type": "integer",
+                    "description": "Independent Gibbs chains per sink.",
+                    "default": 10,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourcetracker2_draws_per_restart": {
+                    "type": "integer",
+                    "description": "Draws taken from each chain.",
+                    "default": 1,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourcetracker2_burnin": {
+                    "type": "integer",
+                    "description": "Passes before the first draw.",
+                    "default": 100,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourcetracker2_delay": {
+                    "type": "integer",
+                    "description": "Passes between draws.",
+                    "default": 10,
+                    "minimum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "attribution_method_options": {
+            "title": "FEAST, SourceID-NMF and SourcePredict",
+            "type": "object",
+            "fa_icon": "fas fa-sliders-h",
+            "properties": {
+                "feast_em_iterations": {
+                    "type": "integer",
+                    "description": "FEAST: expectation-maximisation iterations.",
+                    "default": 1000,
+                    "minimum": 1
+                },
+                "feast_coverage": {
+                    "type": "integer",
+                    "description": "FEAST: rarefaction depth (0: the smallest sink or pooled source).",
+                    "default": 0,
+                    "minimum": 0
+                },
+                "sourceid_nmf_code": {
                     "type": "string",
-                    "description": "Extra arguments passed to SourceTracker2.",
-                    "default": "",
-                    "pattern": "^[^'\\n\\r]*$",
+                    "description": "SourceID-NMF: where its code is fetched from, a URL or a directory.",
+                    "default": "https://raw.githubusercontent.com/ZiyiHuang0708/SourceID-NMF/4fd1cdff0b2781cdae8bf1f5c71aa6b72779578a",
+                    "help_text": "SourceID-NMF has no licence, so MSTFlow does not redistribute it. By default its files are fetched from the authors' repository at a fixed commit; on machines without internet access, clone the repository and give its directory."
+                },
+                "sourceid_nmf_iterations": {
+                    "type": "integer",
+                    "description": "SourceID-NMF: maximum iterations.",
+                    "default": 2000,
+                    "minimum": 1
+                },
+                "sourceid_nmf_rho": {
+                    "type": "integer",
+                    "description": "SourceID-NMF: penalty parameter.",
+                    "default": 1,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourceid_nmf_weight": {
+                    "type": "integer",
+                    "description": "SourceID-NMF: weighting matrix coefficient.",
+                    "default": 1,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourceid_nmf_tolerance": {
+                    "type": "number",
+                    "description": "SourceID-NMF: convergence threshold.",
+                    "default": 1e-06,
+                    "exclusiveMinimum": 0,
+                    "hidden": true
+                },
+                "sourcepredict_neighbors": {
+                    "type": "integer",
+                    "description": "SourcePredict: neighbours for its classifier (0: chosen automatically).",
+                    "default": 0,
+                    "minimum": 0
+                },
+                "sourcepredict_unknown_alpha": {
+                    "type": "number",
+                    "description": "SourcePredict: share of the sink used to model an unknown source.",
+                    "default": 0.1,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "hidden": true
+                },
+                "sourcepredict_normalization": {
+                    "type": "string",
+                    "description": "SourcePredict: count normalisation.",
+                    "default": "SUBSAMPLE",
+                    "enum": [
+                        "SUBSAMPLE",
+                        "GMPR",
+                        "RLE"
+                    ],
+                    "hidden": true
+                },
+                "sourcepredict_distance": {
+                    "type": "string",
+                    "description": "SourcePredict: distance between samples.",
+                    "default": "weighted_unifrac",
+                    "enum": [
+                        "weighted_unifrac",
+                        "unweighted_unifrac"
+                    ],
+                    "hidden": true
+                },
+                "sourcepredict_embedding": {
+                    "type": "string",
+                    "description": "SourcePredict: embedding (auto: t-SNE for large panels, MDS for small ones).",
+                    "default": "auto",
+                    "enum": [
+                        "auto",
+                        "TSNE",
+                        "UMAP",
+                        "MDS"
+                    ],
                     "hidden": true
                 }
             }
@@ -501,11 +703,6 @@
                     "description": "Container image for Bracken.",
                     "hidden": true
                 },
-                "container_biom": {
-                    "type": "string",
-                    "description": "Container image for biom-format.",
-                    "hidden": true
-                },
                 "container_multiqc": {
                     "type": "string",
                     "description": "Container image for MultiQC.",
@@ -519,6 +716,21 @@
                 "container_sourcetracker2": {
                     "type": "string",
                     "description": "Container image for SourceTracker2.",
+                    "hidden": true
+                },
+                "container_sourcepredict": {
+                    "type": "string",
+                    "description": "Container image for SourcePredict.",
+                    "hidden": true
+                },
+                "container_attribution": {
+                    "type": "string",
+                    "description": "Container image for FEAST, FastST and SourceID-NMF.",
+                    "hidden": true
+                },
+                "container_krakenuniq": {
+                    "type": "string",
+                    "description": "Container image for KrakenUniq.",
                     "hidden": true
                 }
             }
@@ -555,6 +767,9 @@
             "$ref": "#/$defs/preprocessing_options"
         },
         {
+            "$ref": "#/$defs/classifier_options"
+        },
+        {
             "$ref": "#/$defs/kraken2_options"
         },
         {
@@ -564,7 +779,13 @@
             "$ref": "#/$defs/taxon_filter_options"
         },
         {
+            "$ref": "#/$defs/attribution_options"
+        },
+        {
             "$ref": "#/$defs/sourcetracker2_options"
+        },
+        {
+            "$ref": "#/$defs/attribution_method_options"
         },
         {
             "$ref": "#/$defs/sample_qc_options"

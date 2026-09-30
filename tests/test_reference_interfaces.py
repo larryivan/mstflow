@@ -747,7 +747,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)
             run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts",
                 counts,
                 "--metadata",
@@ -770,9 +770,9 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 "bone",
                 "--exclude-panel-role",
                 "control,holdout",
-                "--source-rarefaction-depth",
+                "--min-source-count",
                 "1000",
-                "--sink-rarefaction-depth",
+                "--min-sink-count",
                 "1000",
                 "--analysis-label",
                 "NO_BONE",
@@ -817,7 +817,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     row["source_sink"] = "sink"
             write_tsv(metadata, list(metadata_rows[0]), metadata_rows)
             run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts", counts,
                 "--metadata", metadata,
                 "--feature-sample-qc", feature_qc,
@@ -845,7 +845,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 )
                 writer.writerow(["taxid_2__Bacteria", 600, 600, "700.5", 800, 1500, 2000])
             failed = run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts", fractional,
                 "--metadata", metadata,
                 "--feature-sample-qc", feature_qc,
@@ -861,94 +861,6 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertIn("soil1", failed.stderr)
             self.assertIn("whole read count", failed.stderr)
 
-    def test_prepare_loo_does_not_require_sink(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "loo_counts.tsv",
-                "--output-map",
-                root / "loo_map.tsv",
-                "--summary",
-                root / "loo_summary.tsv",
-                "--exclusions",
-                root / "loo_excluded.tsv",
-                "--sample-qc",
-                root / "loo_qc.tsv",
-                "--aggregate-by",
-                "sample_id",
-                "--exclude-panel-role",
-                "control,holdout",
-                "--sink-rarefaction-depth",
-                "500",
-                "--random-seed",
-                "17",
-                "--loo",
-            )
-            mapping = read_tsv(root / "loo_map.tsv")
-            self.assertTrue(mapping)
-            self.assertEqual({row["SourceSink"] for row in mapping}, {"source"})
-            with open(root / "loo_counts.tsv", newline="") as handle:
-                count_rows = list(csv.reader(handle, delimiter="\t"))
-            column_totals = [
-                sum(float(row[index]) for row in count_rows[1:])
-                for index in range(1, len(count_rows[0]))
-            ]
-            self.assertEqual(column_totals, [500.0] * len(column_totals))
-            excluded = {row["input_sample_id"]: row for row in read_tsv(root / "loo_excluded.tsv")}
-            self.assertEqual(excluded["sink1"]["exclusion_reason"], "loo_sources_only")
-
-    def test_prepare_loo_rejects_rarefied_sources_and_singleton_environments(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            common = [
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "loo_counts.tsv",
-                "--output-map",
-                root / "loo_map.tsv",
-                "--summary",
-                root / "loo_summary.tsv",
-                "--exclude-panel-role",
-                "control,holdout",
-                "--loo",
-            ]
-            rarefied = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                *common,
-                "--source-rarefaction-depth",
-                "1000",
-                check=False,
-            )
-            self.assertNotEqual(rarefied.returncode, 0)
-            self.assertIn("LOO requires --source-rarefaction-depth 0", rarefied.stderr)
-
-            singleton = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                *common,
-                "--aggregate-by",
-                "unit_id",
-                check=False,
-            )
-            self.assertNotEqual(singleton.returncode, 0)
-            self.assertIn("at least two independent analysis units", singleton.stderr)
-            self.assertIn("bone", singleton.stderr)
-            self.assertIn("soil", singleton.stderr)
-
     def test_prepare_validates_and_filters_complete_units(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -959,7 +871,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     row["panel_role"] = "holdout"
             write_tsv(metadata, list(rows[0]), rows)
             conflicting = run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts",
                 counts,
                 "--metadata",
@@ -994,7 +906,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     row["kraken_classified_fraction"] = "0"
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
             run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts",
                 counts,
                 "--metadata",
@@ -1035,7 +947,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     row["panel_role"] = "holdout"
             write_tsv(metadata, list(rows[0]), rows)
             run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts",
                 counts,
                 "--metadata",
@@ -1064,7 +976,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     row["model_source_env"] = "Unknown"
             write_tsv(metadata, list(rows[0]), rows)
             failed = run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts",
                 counts,
                 "--metadata",
@@ -1096,7 +1008,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 row["taxon_filter_retained_fraction"] = "0"
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
             run_script(
-                "prepare_sourcetracker2_inputs.py",
+                "prepare_attribution_inputs.py",
                 "--counts",
                 counts,
                 "--metadata",
@@ -1184,147 +1096,6 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertNotEqual(mismatch.returncode, 0)
             self.assertIn("PYTHONHASHSEED must be exported", mismatch.stderr)
 
-    def test_plot_uses_uncertainty_and_abstains_without_hard_call(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            means = root / "mixing_proportions.txt"
-            stds = root / "mixing_proportions_stds.txt"
-            mapping = root / "map.tsv"
-            means.write_text("SampleID\tsoil\tbone\tUnknown\nsink1\t0.2\t0.1\t0.7\n")
-            stds.write_text("SampleID\tsoil\tbone\tUnknown\nsink1\t0.05\t0.02\t0.08\n")
-            write_tsv(
-                mapping,
-                ["#SampleID", "SourceSink", "Env"],
-                [{"#SampleID": "sink1", "SourceSink": "sink", "Env": "bone"}],
-            )
-            assignments = root / "assignments.tsv"
-            image = root / "plot.png"
-            run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                means,
-                "--uncertainty",
-                stds,
-                "--mapping",
-                mapping,
-                "--assignments",
-                assignments,
-                "--plot",
-                image,
-                "--max-unknown-prop",
-                "0.5",
-                "--min-top-known-prop",
-                "0.5",
-            )
-            result = read_tsv(assignments)[0]
-            self.assertEqual(result["assignment"], "ABSTAIN")
-            self.assertEqual(result["abstained"], "true")
-            self.assertEqual(result["top_known_std"], "0.05")
-            self.assertEqual(result["top_known_correct"], "NA")
-            self.assertGreater(image.stat().st_size, 100)
-
-            tie_mapping = root / "tie_map.tsv"
-            write_tsv(
-                tie_mapping,
-                ["#SampleID", "SourceSink", "Env"],
-                [{"#SampleID": "tie_sink", "SourceSink": "sink", "Env": "soil"}],
-            )
-            tie_means = root / "tie_means.txt"
-            tie_means.write_text(
-                "SampleID\tsoil\tbone\tUnknown\ntie_sink\t0.5\t0.5\t0\n"
-            )
-            tie_assignments = root / "tie_assignments.tsv"
-            run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                tie_means,
-                "--mapping",
-                tie_mapping,
-                "--assignments",
-                tie_assignments,
-                "--plot",
-                root / "tie.png",
-            )
-            tie_result = read_tsv(tie_assignments)[0]
-            self.assertEqual(tie_result["assignment"], "ABSTAIN")
-            self.assertIn("top_known_tie", tie_result["abstention_reason"])
-
-            duplicate = root / "duplicate_columns.txt"
-            duplicate.write_text(
-                "SampleID\tsoil\tsoil\tUnknown\nsink1\t0.4\t0.4\t0.2\n"
-            )
-            duplicate_result = run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                duplicate,
-                "--mapping",
-                mapping,
-                "--assignments",
-                root / "duplicate_assignments.tsv",
-                "--plot",
-                root / "duplicate.png",
-                check=False,
-            )
-            self.assertNotEqual(duplicate_result.returncode, 0)
-            self.assertIn("duplicate result column(s): soil", duplicate_result.stderr)
-
-            empty = root / "empty.txt"
-            empty.write_text("SampleID\tsoil\tUnknown\n")
-            empty_image = root / "empty.png"
-            missing_sink = run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                empty,
-                "--mapping",
-                mapping,
-                "--assignments",
-                root / "empty_assignments.tsv",
-                "--plot",
-                empty_image,
-                check=False,
-            )
-            self.assertNotEqual(missing_sink.returncode, 0)
-            self.assertIn("missing sink result(s): sink1", missing_sink.stderr)
-
-            malformed = root / "malformed.txt"
-            malformed.write_text("SampleID\tsoil\tUnknown\nsink1\t0.2\t0.2\n")
-            bad_sum = run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                malformed,
-                "--mapping",
-                mapping,
-                "--assignments",
-                root / "malformed_assignments.tsv",
-                "--plot",
-                root / "malformed.png",
-                check=False,
-            )
-            self.assertNotEqual(bad_sum.returncode, 0)
-            self.assertIn("sum to 0.4", bad_sum.stderr)
-
-            loo_mapping = root / "loo_map.tsv"
-            write_tsv(
-                loo_mapping,
-                ["#SampleID", "SourceSink", "Env"],
-                [{"#SampleID": "source1", "SourceSink": "source", "Env": "soil"}],
-            )
-            loo_means = root / "loo_means.txt"
-            loo_means.write_text("SampleID\tsoil\tUnknown\nsource1\t1\t0\n")
-            loo_image = root / "loo.png"
-            run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                loo_means,
-                "--mapping",
-                loo_mapping,
-                "--assignments",
-                root / "loo_assignments.tsv",
-                "--plot",
-                loo_image,
-                "--loo",
-            )
-            self.assertGreater(loo_image.stat().st_size, 100)
 
 
 if __name__ == "__main__":

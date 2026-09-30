@@ -71,6 +71,10 @@ def main():
     for filename in ("hash.k2d", "opts.k2d", "taxo.k2d"):
         (KRAKEN_DIR / filename).write_text("mstflow stub database\n")
     (KRAKEN_DIR / "database75mers.kmer_distrib").write_text("mstflow stub distribution\n")
+    krakenuniq = TEST_DIR / "krakenuniq_stub_db"
+    krakenuniq.mkdir(parents=True, exist_ok=True)
+    for filename in ("database.kdb", "database.idx", "taxDB"):
+        (krakenuniq / filename).write_text("mstflow stub database\n")
 
     write_fastq(
         READ_DIR / "modern_pe_R1.fastq.gz",
@@ -100,6 +104,17 @@ def main():
     )
 
     write_metadata(TEST_DIR / "metadata.tsv")
+
+    # SourcePredict reads the NCBI taxonomy; SourceID-NMF's code is staged from a
+    # directory. Stub mode needs only the files to exist, and no network.
+    taxonomy = TEST_DIR / "taxonomy"
+    taxonomy.mkdir(parents=True, exist_ok=True)
+    (taxonomy / "nodes.dmp").write_text("1\t|\t1\t|\tno rank\t|\n")
+    (taxonomy / "names.dmp").write_text("1\t|\troot\t|\t\t|\tscientific name\t|\n")
+    nmf = TEST_DIR / "sourceid_nmf"
+    nmf.mkdir(parents=True, exist_ok=True)
+    for name in ("SourceID-NMF.py", "admm.py", "data_clustering.py", "data_estimation.py", "data_initialization.py"):
+        (nmf / name).write_text("# stub\n")
 
     print(f"Wrote tiny test data under {TEST_DIR}")
     print(f"Metadata: {TEST_DIR / 'metadata.tsv'}")

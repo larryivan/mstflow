@@ -28,24 +28,20 @@ bracken_threshold: 1
 taxon_filter: none
 drop_taxids: "0,1"
 
-run_sourcetracker2: true
+attribution_methods: "sourcetracker2,feast,fastst,sourceid_nmf,sourcepredict"
+attribution_label: tiny_stub
+attribution_aggregate_by: unit_id
+attribution_taxon_scope: all
+attribution_exclude_panel_roles: "control,holdout"
+attribution_min_classified_fraction: 0
+attribution_min_retained_reads: 0
+attribution_min_retained_fraction: 0
+attribution_cv: true
+attribution_cv_group: sample_label
 sourcetracker2_source_rarefaction_depth: 0
 sourcetracker2_sink_rarefaction_depth: 0
-sourcetracker2_aggregate_by: unit_id
-sourcetracker2_taxon_scope: all
-sourcetracker2_analysis_label: tiny_stub
-sourcetracker2_include_panel_roles: ""
-sourcetracker2_exclude_panel_roles: "control,holdout"
-sourcetracker2_exclude_source_envs: ""
-sourcetracker2_exclude_source_classes: ""
-sourcetracker2_min_kraken_classified_fraction: 0
-sourcetracker2_min_taxon_filter_retained_reads: 0
-sourcetracker2_min_taxon_filter_retained_fraction: 0
-sourcetracker2_max_unknown_prop: 0.5
-sourcetracker2_min_top_known_prop: 0.5
-sourcetracker2_min_top_known_margin: 0.05
-sourcetracker2_loo: false
-sourcetracker2_seed: 1
+taxdump: tests/stub/data/taxonomy
+sourceid_nmf_code: tests/stub/data/sourceid_nmf
 
 multiqc_title: mstflow tiny stub
 ancient_pe_mode: collapsed_only

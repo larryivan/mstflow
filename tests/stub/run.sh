@@ -13,3 +13,15 @@ nextflow run . \
     -params-file tests/stub/params.yml \
     -stub-run \
     -resume
+
+# The same wiring with KrakenUniq in place of Kraken2 and Bracken.
+nextflow run . \
+    -profile test \
+    -params-file tests/stub/params.yml \
+    --classifier krakenuniq \
+    --krakenuniq_db tests/stub/data/krakenuniq_stub_db \
+    --krakenuniq_min_kmers 0 \
+    --krakenuniq_min_reads 0 \
+    --outdir results/stub_krakenuniq \
+    -stub-run \
+    -resume

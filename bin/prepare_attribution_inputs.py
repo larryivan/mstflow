@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
+"""Select, aggregate and depth-check the analysis units for source attribution.
+
+Writes the count table and map that every attribution method reads (see
+mstflow_attribution.py), and records for every input sample whether it was used and,
+if not, why.
+"""
 import argparse
 import csv
 import fnmatch
-import hashlib
 import math
-import random
 import re
 import sys
 from collections import OrderedDict
@@ -49,7 +53,7 @@ QC_FIELDS = [
     "taxon_filter_retained_fraction",
     "input_total_count",
     "analysis_total_count",
-    "required_rarefaction_depth",
+    "required_min_count",
     "aggregation_n",
     "aggregation_members",
     "included",
@@ -116,7 +120,7 @@ def exact_count(value, context):
     """Parse a feature count as an exact integer.
 
     Accepts ``8``, ``8.0``, and ``8e0``; rejects fractional, negative, NaN, and
-    infinite values. SourceTracker2 subsamples integer count vectors, so a
+    infinite values. SourceTracker2 and FEAST subsample integer count vectors, so a
     fractional cell must fail loudly instead of being silently rounded.
     """
     text = "" if value is None else str(value).strip()
@@ -334,42 +338,12 @@ def sample_total(sample, features, matrix):
     return sum(matrix[feature][sample] for feature in features)
 
 
-def rarefy_counts(values, depth, seed, group_id):
-    """Subsample one analysis unit without expanding its count vector.
-
-    The input vector is already exact integers (see ``exact_count``), so no
-    rounding happens here; rounding up would have invented reads that the
-    profiler never observed.
-    """
-    integer_values = list(values)
-    total = sum(integer_values)
-    if depth == 0:
-        return integer_values
-    if total < depth:
-        raise SystemExit(
-            f"analysis unit '{group_id}' has {total} counts, below LOO rarefaction depth {depth}"
-        )
-    digest = hashlib.sha256(f"{seed}\0{group_id}".encode("utf-8")).digest()
-    group_seed = int.from_bytes(digest[:8], "big")
-    selected = sorted(random.Random(group_seed).sample(range(total), depth))
-    rarefied = [0] * len(integer_values)
-    feature_index = 0
-    boundary = integer_values[0] if integer_values else 0
-    for position in selected:
-        while position >= boundary:
-            feature_index += 1
-            boundary += integer_values[feature_index]
-        rarefied[feature_index] += 1
-    return rarefied
-
-
 def initial_exclusion_reason(
     row,
     include_panel_roles,
     exclude_panel_roles,
     exclude_source_envs,
     exclude_source_classes,
-    loo,
 ):
     panel_role = first_present(row, "panel_role")
     if panel_role_excluded(panel_role, exclude_panel_roles):
@@ -380,8 +354,6 @@ def initial_exclusion_reason(
     source_sink = norm(row.get("source_sink")).lower()
     if is_na(source_sink) or source_sink not in {"source", "sink"}:
         return "source_sink_not_selected"
-    if loo and source_sink != "source":
-        return "loo_sources_only"
     source_env = metadata_env(row)
     source_class = metadata_source_class(row)
     if source_sink == "source" and is_na(source_env):
@@ -503,7 +475,7 @@ def make_qc_row(
         "taxon_filter_retained_fraction": qc_value(feature_qc, "taxon_filter_retained_fraction"),
         "input_total_count": format_count(input_total),
         "analysis_total_count": format_count(analysis_total),
-        "required_rarefaction_depth": required_depth,
+        "required_min_count": required_depth,
         "aggregation_n": len(members) if members else 0,
         "aggregation_members": ",".join(members) if members else "NA",
         "included": str(bool(included)).lower(),
@@ -522,7 +494,7 @@ def write_qc_rows(path, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Select, aggregate, depth-check, and document SourceTracker2 inputs."
+        description="Select, aggregate, depth-check, and document source attribution inputs."
     )
     parser.add_argument("--counts", required=True)
     parser.add_argument("--metadata", required=True)
@@ -533,23 +505,19 @@ def main():
     parser.add_argument("--exclusions")
     parser.add_argument("--sample-qc")
     parser.add_argument("--aggregate-by", default="sample_id")
-    parser.add_argument("--source-rarefaction-depth", type=int, default=0)
-    parser.add_argument("--sink-rarefaction-depth", type=int, default=0)
+    parser.add_argument("--min-source-count", type=int, default=0,
+                        help="Exclude source units with fewer counts, e.g. below the SourceTracker2 rarefaction depth.")
+    parser.add_argument("--min-sink-count", type=int, default=0,
+                        help="Exclude sink units with fewer counts.")
     parser.add_argument("--include-panel-role", action="append", default=[])
     parser.add_argument("--exclude-panel-role", action="append", default=[])
     parser.add_argument("--exclude-source-env", "--exclude-source-envs", action="append", default=[])
     parser.add_argument("--exclude-source-class", "--exclude-source-classes", action="append", default=[])
     parser.add_argument("--analysis-label", default="default")
-    parser.add_argument("--random-seed", type=int, default=1)
     parser.add_argument("--taxon-scope", choices=["all", "filtered"], default="filtered")
     parser.add_argument("--min-kraken-classified-fraction", type=float, default=0.001)
     parser.add_argument("--min-taxon-filter-retained-reads", type=float, default=1000.0)
     parser.add_argument("--min-taxon-filter-retained-fraction", type=float, default=0.001)
-    parser.add_argument(
-        "--loo",
-        action="store_true",
-        help="Prepare source-only inputs for SourceTracker2 leave-one-out validation.",
-    )
     args = parser.parse_args()
 
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.analysis_label):
@@ -557,16 +525,8 @@ def main():
             "--analysis-label must be filesystem-safe: letters/numbers followed by letters, "
             "numbers, dot, underscore, or hyphen"
         )
-    if args.source_rarefaction_depth < 0 or args.sink_rarefaction_depth < 0:
-        raise SystemExit("rarefaction depths must be non-negative")
-    if not 0 <= args.random_seed <= 2_147_483_647:
-        raise SystemExit("--random-seed must be between 0 and 2147483647")
-    if args.loo and args.source_rarefaction_depth != 0:
-        raise SystemExit(
-            "SourceTracker2 2.0.1 LOO requires --source-rarefaction-depth 0: "
-            "the upstream CLI subtracts unrarefied held-out counts from already-rarefied "
-            "source counts"
-        )
+    if args.min_source_count < 0 or args.min_sink_count < 0:
+        raise SystemExit("minimum counts must be non-negative")
     if not 0 <= args.min_kraken_classified_fraction <= 1:
         raise SystemExit("--min-kraken-classified-fraction must be between 0 and 1")
     if args.min_taxon_filter_retained_reads < 0:
@@ -616,18 +576,13 @@ def main():
         total = sum(input_totals[sample] for sample in members)
         group_totals[group_id] = total
         role = group_metadata[group_id]["source_sink"]
-        required_depth = (
-            args.sink_rarefaction_depth
-            if args.loo and role == "source"
-            else args.source_rarefaction_depth if role == "source" else args.sink_rarefaction_depth
-        )
+        required_depth = args.min_source_count if role == "source" else args.min_sink_count
         group_reason = initial_exclusion_reason(
             group_metadata[group_id],
             include_panel_roles,
             exclude_panel_roles,
             exclude_source_envs,
             exclude_source_classes,
-            args.loo,
         )
         if not group_reason:
             group_reason = quality_exclusion_reason(
@@ -640,8 +595,7 @@ def main():
         if not group_reason and total <= 0:
             group_reason = "zero_total_count"
         elif not group_reason and total < required_depth:
-            depth_label = "loo_analysis_unit" if args.loo and role == "source" else role
-            group_reason = f"below_{depth_label}_rarefaction_depth:{required_depth}"
+            group_reason = f"below_min_{role}_count:{required_depth}"
         if group_reason:
             for sample in members:
                 reasons[sample] = group_reason
@@ -649,7 +603,7 @@ def main():
             final_groups.append(group_id)
 
     if not final_groups:
-        raise SystemExit("no SourceTracker2 samples remain after role, exclusion, and depth QC")
+        raise SystemExit("no samples remain for source attribution after role, exclusion, and depth QC")
     source_groups = [
         group for group in final_groups if group_metadata[group]["source_sink"] == "source"
     ]
@@ -657,9 +611,9 @@ def main():
         group for group in final_groups if group_metadata[group]["source_sink"] == "sink"
     ]
     if not source_groups:
-        raise SystemExit("SourceTracker2 requires at least one source after exclusions and depth QC")
-    if not args.loo and not sink_groups:
-        raise SystemExit("SourceTracker2 requires at least one sink after exclusions and depth QC")
+        raise SystemExit("source attribution needs at least one source after exclusions and depth QC")
+    if not sink_groups:
+        raise SystemExit("source attribution needs at least one sink after exclusions and depth QC")
     reserved_source_envs = [
         group_metadata[group]["model_source_env"]
         for group in source_groups
@@ -667,23 +621,9 @@ def main():
     ]
     if reserved_source_envs:
         raise SystemExit(
-            "SourceTracker2 source environment names must not use reserved result columns "
+            "source environment names must not use the reserved result columns "
             "Unknown or SampleID; found: " + ", ".join(sorted(set(reserved_source_envs)))
         )
-    if args.loo:
-        source_groups_by_env = OrderedDict()
-        for group in source_groups:
-            source_groups_by_env.setdefault(group_metadata[group]["model_source_env"], []).append(
-                group
-            )
-        singleton_envs = [
-            env for env, env_groups in source_groups_by_env.items() if len(env_groups) < 2
-        ]
-        if singleton_envs:
-            raise SystemExit(
-                "SourceTracker2 LOO requires at least two independent analysis units in every "
-                "source environment; insufficient: " + ", ".join(singleton_envs)
-            )
 
     aggregated = {}
     for feature in features:
@@ -692,29 +632,13 @@ def main():
             for group in final_groups
         }
 
-    # SourceTracker2 2.0.1 does not rarefy held-out source samples in --loo
-    # mode. Rarefy every analysis unit here before it pools source
-    # environments, so held-out sinks have equal depth and subtraction is
-    # mathematically valid. Stable per-group seeds prevent panel ordering from
-    # changing an existing unit's subsample.
-    if args.loo and args.sink_rarefaction_depth > 0:
-        for group in final_groups:
-            rarefied = rarefy_counts(
-                [aggregated[feature][group] for feature in features],
-                args.sink_rarefaction_depth,
-                args.random_seed,
-                group,
-            )
-            for feature, value in zip(features, rarefied):
-                aggregated[feature][group] = value
-
     retained_features = [
         feature
         for feature in features
         if any(aggregated[feature][group] > 0 for group in final_groups)
     ]
     if not retained_features:
-        raise SystemExit("no nonzero features remain for SourceTracker2")
+        raise SystemExit("no nonzero features remain for source attribution")
     analysis_group_totals = {
         group: sum(aggregated[feature][group] for feature in retained_features)
         for group in final_groups
@@ -770,10 +694,7 @@ def main():
         members = groups.get(group, []) if group else []
         role = norm(metadata[sample].get("source_sink")).lower()
         required_depth = (
-            args.sink_rarefaction_depth
-            if args.loo and role == "source"
-            else args.source_rarefaction_depth if role == "source"
-            else args.sink_rarefaction_depth if role == "sink" else 0
+            args.min_source_count if role == "source" else args.min_sink_count if role == "sink" else 0
         )
         included = bool(group in final_groups)
         qc_rows.append(
@@ -799,7 +720,6 @@ def main():
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["metric", "value"])
         writer.writerow(["analysis_label", args.analysis_label])
-        writer.writerow(["loo", str(args.loo).lower()])
         writer.writerow(["sample_completeness", "one_to_one"])
         writer.writerow(["aggregate_by", args.aggregate_by])
         writer.writerow(["taxon_scope", args.taxon_scope])
@@ -810,15 +730,8 @@ def main():
         writer.writerow(["excluded_input_samples", sum(sample in reasons for sample in samples)])
         writer.writerow(["source_analysis_units", len(source_groups)])
         writer.writerow(["sink_analysis_units", len(sink_groups)])
-        writer.writerow(["source_rarefaction_depth", args.source_rarefaction_depth])
-        writer.writerow(["sink_rarefaction_depth", args.sink_rarefaction_depth])
-        writer.writerow(
-            [
-                "loo_analysis_unit_rarefaction_depth",
-                args.sink_rarefaction_depth if args.loo else "NA",
-            ]
-        )
-        writer.writerow(["random_seed", args.random_seed])
+        writer.writerow(["min_source_count", args.min_source_count])
+        writer.writerow(["min_sink_count", args.min_sink_count])
         writer.writerow(["min_kraken_classified_fraction", args.min_kraken_classified_fraction])
         writer.writerow(["min_taxon_filter_retained_reads", args.min_taxon_filter_retained_reads])
         writer.writerow(["min_taxon_filter_retained_fraction", args.min_taxon_filter_retained_fraction])

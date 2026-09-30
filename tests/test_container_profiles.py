@@ -67,10 +67,11 @@ class ContainerDirectiveTests(unittest.TestCase):
             "container_bwa",
             "container_kraken2",
             "container_bracken",
-            "container_biom",
             "container_multiqc",
             "container_python_tools",
             "container_sourcetracker2",
+            "container_sourcepredict",
+            "container_krakenuniq",
         ):
             with self.subTest(parameter=parameter):
                 line = next(

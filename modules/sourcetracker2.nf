@@ -1,122 +1,75 @@
-process SOURCETRACKER2_GIBBS {
+/*
+ * SourceTracker2 (Knights et al. 2011): a Bayesian mixture of the source environments
+ * and an unknown source, fitted by Gibbs sampling. Sources of one environment are
+ * pooled, and sources and sinks are rarefied to fixed depths.
+ */
+process SOURCETRACKER2 {
     label 'process_medium'
-    tag "sourcetracker2:${params.get('sourcetracker2_analysis_label', 'default')}"
+    tag "${meta.analysis}"
     container "${params.container_sourcetracker2}"
-    publishDir "${params.outdir}/source_attribution/sourcetracker2/${params.get('sourcetracker2_analysis_label', 'default')}", mode: 'copy'
+    publishDir "${params.outdir}/attribution/${params.attribution_label}/sourcetracker2", mode: 'copy',
+        saveAs: { name -> meta.analysis == 'main' ? name : null }
 
     input:
-    path biom
-    path mapping
+    tuple val(meta), path(counts), path(mapping)
     path seeded_runner
+    path results_script
+    path attribution_module
 
     output:
-    path "sourcetracker2.out", emit: outdir
-    path "mixing_proportions.txt", emit: proportions
-    path "mixing_proportions_stds.txt", emit: uncertainty
-    path "sourcetracker2_versions.yml", emit: versions
+    tuple val(meta), path("${meta.analysis}.sourcetracker2.attribution.tsv"), emit: results
+    path "sourcetracker2.out", emit: raw
+    path "${meta.analysis}.sourcetracker2.versions.yml", emit: versions
 
     script:
-    def extraArgs = params.sourcetracker2_extra_args ?: ''
-    def looEnabled = params.get('sourcetracker2_loo', false).toString().toBoolean()
-    def looArg = looEnabled ? '--loo' : ''
-    def seed = params.sourcetracker2_seed as int
-    def sourceDepth = looEnabled ? 0 : params.sourcetracker2_source_rarefaction_depth
-    def sinkDepth = looEnabled ? 0 : params.sourcetracker2_sink_rarefaction_depth
+    def seed = params.attribution_seed as int
     """
-    rm -rf sourcetracker2.out
     export PYTHONHASHSEED=${seed}
+    biom convert -i ${counts} -o feature_table.biom --to-hdf5 --table-type 'OTU table'
 
     python3 ${seeded_runner} --seed ${seed} gibbs \\
-        -i ${biom} \\
+        -i feature_table.biom \\
         -m ${mapping} \\
         -o sourcetracker2.out \\
         --source_sink_column SourceSink \\
         --source_column_value source \\
         --sink_column_value sink \\
         --source_category_column Env \\
-        --source_rarefaction_depth ${sourceDepth} \\
-        --sink_rarefaction_depth ${sinkDepth} \\
-        --jobs 1 \\
-        ${looArg} \\
-        ${extraArgs}
+        --source_rarefaction_depth ${params.sourcetracker2_source_rarefaction_depth} \\
+        --sink_rarefaction_depth ${params.sourcetracker2_sink_rarefaction_depth} \\
+        --alpha1 ${params.sourcetracker2_alpha1} \\
+        --alpha2 ${params.sourcetracker2_alpha2} \\
+        --beta ${params.sourcetracker2_beta} \\
+        --restarts ${params.sourcetracker2_restarts} \\
+        --draws_per_restart ${params.sourcetracker2_draws_per_restart} \\
+        --burnin ${params.sourcetracker2_burnin} \\
+        --delay ${params.sourcetracker2_delay} \\
+        --jobs 1
 
-    mean_file=''
-    for candidate in \\
-        sourcetracker2.out/mixing_proportions.txt \\
-        sourcetracker2.out/mixing_proporitions.txt
-    do
-        if [[ -s "\$candidate" ]]; then
-            mean_file="\$candidate"
-            break
-        fi
-    done
-    if [[ -z "\$mean_file" ]]; then
-        echo "SourceTracker2 did not produce mixing proportions" >&2
-        exit 1
-    fi
-    cp "\$mean_file" mixing_proportions.txt
+    # SourceTracker2 2.0.1 misspells some output names in some code paths.
+    means=\$(ls sourcetracker2.out/mixing_propor*.txt | grep -v std | head -n 1)
+    stds=\$(ls sourcetracker2.out/mixing_propor*std*.txt | head -n 1)
+    python3 ${results_script} \\
+        --proportions "\$means" \\
+        --stds "\$stds" \\
+        --map ${mapping} \\
+        --analysis ${meta.analysis} \\
+        --output ${meta.analysis}.sourcetracker2.attribution.tsv
 
-    std_file=''
-    for candidate in \\
-        sourcetracker2.out/mixing_proportions_stds.txt \\
-        sourcetracker2.out/mixing_proportion_stds.txt \\
-        sourcetracker2.out/mixing_proporitions_stds.txt \\
-        sourcetracker2.out/mixing_proporition_stds.txt
-    do
-        if [[ -s "\$candidate" ]]; then
-            std_file="\$candidate"
-            break
-        fi
-    done
-    if [[ -z "\$std_file" ]]; then
-        echo "SourceTracker2 did not produce mixing-proportion standard deviations" >&2
-        exit 1
-    fi
-    cp "\$std_file" mixing_proportions_stds.txt
-
-    printf '"${task.process}":\\n    sourcetracker2: "%s"\\n    seed: "${seed}"\\n    jobs: "1"\\n    source_rarefaction_depth: "${sourceDepth}"\\n    sink_rarefaction_depth: "${sinkDepth}"\\n' "\$(sourcetracker2 --version 2>&1 | head -n 1 || true)" > sourcetracker2_versions.yml
+    printf '"${task.process}":\\n    sourcetracker2: "%s"\\n' "\$(sourcetracker2 --version 2>&1 | head -n 1)" \\
+        > ${meta.analysis}.sourcetracker2.versions.yml
     """
 
     stub:
-    def looEnabled = params.get('sourcetracker2_loo', false).toString().toBoolean()
-    def seed = params.sourcetracker2_seed as int
     """
     mkdir -p sourcetracker2.out
     python3 - <<'PY'
-import csv
-
-loo = '${looEnabled}' == 'true'
-sources = []
-source_rows = []
-sinks = []
-with open('${mapping}', newline='') as handle:
-    for row in csv.DictReader(handle, delimiter='\\t'):
-        if row['SourceSink'] == 'source':
-            if row['Env'] not in sources:
-                sources.append(row['Env'])
-            source_rows.append(row)
-        elif row['SourceSink'] == 'sink':
-            sinks.append(row)
-targets = source_rows if loo else sinks
-columns = [*sources, 'Unknown']
-with open('mixing_proportions.txt', 'w', newline='') as means, open(
-    'mixing_proportions_stds.txt', 'w', newline=''
-) as stds:
-    mean_writer = csv.writer(means, delimiter='\\t', lineterminator='\\n')
-    std_writer = csv.writer(stds, delimiter='\\t', lineterminator='\\n')
-    mean_writer.writerow(['SampleID', *columns])
-    std_writer.writerow(['SampleID', *columns])
-    for target in targets:
-        values = [0.0] * len(columns)
-        if loo and target['Env'] in sources:
-            values[sources.index(target['Env'])] = 1.0
-        else:
-            values[-1] = 1.0
-        mean_writer.writerow([target['#SampleID'], *values])
-        std_writer.writerow([target['#SampleID'], *([0.0] * len(columns))])
+from mstflow_attribution import UNKNOWN, read_map, roles, write_results
+envs, sinks = roles(read_map("${mapping}"))
+share = 1.0 / (len(envs) + 1)
+write_results("${meta.analysis}.sourcetracker2.attribution.tsv", "${meta.analysis}", "sourcetracker2", "proportion",
+              {sink: {source: (share, 0.0) for source in [*envs, UNKNOWN]} for sink in sinks})
 PY
-    cp mixing_proportions.txt sourcetracker2.out/mixing_proportions.txt
-    cp mixing_proportions_stds.txt sourcetracker2.out/mixing_proportions_stds.txt
-    printf '"${task.process}":\\n    stub: "true"\\n    seed: "${seed}"\\n    jobs: "1"\\n' > sourcetracker2_versions.yml
+    printf '"${task.process}":\\n    sourcetracker2: "stub"\\n' > ${meta.analysis}.sourcetracker2.versions.yml
     """
 }
