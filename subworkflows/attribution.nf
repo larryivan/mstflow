@@ -7,7 +7,7 @@ include { SOURCEID_NMF } from '../modules/sourceid_nmf'
 include { PREPARE_SOURCEPREDICT_TAXONOMY; SOURCEPREDICT } from '../modules/sourcepredict'
 include { SUMMARIZE_ATTRIBUTION } from '../modules/summarize_attribution'
 include { EVALUATE_ATTRIBUTION } from '../modules/evaluate_attribution'
-include { binScript; isLocal; splitList; taxdumpFile } from './utils'
+include { binScript; isLocal; isOn; splitList; taxdumpFile } from './utils'
 
 /*
  * Estimate where each sink's microbes came from with every requested method.
@@ -33,7 +33,7 @@ workflow ATTRIBUTION {
         .combine(PREPARE_ATTRIBUTION_INPUTS.out.map)
         .map { table, mapping -> tuple([analysis: 'main'], table, mapping) }
 
-    if (params.attribution_cv) {
+    if (isOn(params.attribution_cv)) {
         SPLIT_ATTRIBUTION_FOLDS(
             PREPARE_ATTRIBUTION_INPUTS.out.counts,
             PREPARE_ATTRIBUTION_INPUTS.out.map,
@@ -94,7 +94,7 @@ workflow ATTRIBUTION {
         binScript('summarize_attribution.py'),
         attributionModule
     )
-    if (params.attribution_cv) {
+    if (isOn(params.attribution_cv)) {
         EVALUATE_ATTRIBUTION(
             by_analysis.folds.map { _meta, result -> result }.toSortedList { a, b -> a.name <=> b.name },
             SPLIT_ATTRIBUTION_FOLDS.out.maps.flatten().toSortedList { a, b -> a.name <=> b.name },

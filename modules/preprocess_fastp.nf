@@ -4,7 +4,7 @@ process PREPROCESS_FASTP {
     container "${params.container_fastp}"
 
     publishDir "${params.outdir}/preprocess/fastp", mode: 'copy', saveAs: { filename ->
-        (params.publish_intermediates || !filename.endsWith('.fq.gz')) ? filename : null
+        (params.publish_intermediates.toString().toBoolean() || !filename.endsWith('.fq.gz')) ? filename : null
     }
 
     input:

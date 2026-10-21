@@ -41,6 +41,8 @@ First public release.
 - Bracken runs by default, and `--bracken_db` defaults to `--kraken2_db`.
 - Parameters are validated strictly against their declared types: booleans must be
   `true` or `false`, and `--bracken_read_len` takes `auto` or a positive integer.
+  On/off options given on the command line, such as `--remove_host false`, now take
+  effect; Nextflow passes them as text, which had read as on.
 - The `docker` profile runs the `linux/amd64` images on any host, including ARM.
 - The workflow is split into preprocessing, profiling and attribution subworkflows.
 - SourceTracker2 options are now attribution options (`--attribution_*`) shared by

@@ -5,7 +5,7 @@ include { ADAPTERREMOVAL_RAW } from '../modules/preprocess_adapterremoval'
 include { NORMALIZE_ADAPTERREMOVAL } from '../modules/normalize_adapterremoval'
 include { HOST_ALIGN_BWA } from '../modules/host_remove_bwa'
 include { FILTER_HOST_ALIGNMENTS } from '../modules/filter_host_alignments'
-include { binScript; hostBundleFor; hostReferenceFor } from './utils'
+include { binScript; hostBundleFor; hostReferenceFor; isOn } from './utils'
 
 /*
  * Trim every library, collapse overlapping ancient read pairs into the molecules they
@@ -35,7 +35,7 @@ workflow PREPROCESS {
     )
     trimmed = PREPROCESS_FASTP.out.reads.mix(NORMALIZE_ADAPTERREMOVAL.out.reads)
 
-    if (params.remove_host) {
+    if (isOn(params.remove_host)) {
         // Fail closed rather than silently dropping samples. `host_action` is the
         // one branch key whose input column is optional, so a validated manifest
         // written before host policies existed would otherwise lose every row here.

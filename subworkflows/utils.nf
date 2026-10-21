@@ -22,6 +22,13 @@ def rejectReservedArgs(name, value, reservedFlags) {
 }
 
 
+// Values given on the command line arrive as text, so `--run_bracken false` is the
+// string "false", which Groovy treats as true. Every on/off parameter is read here.
+def isOn(value) {
+    return value instanceof Boolean ? value : value?.toString()?.trim()?.toLowerCase() == 'true'
+}
+
+
 def splitList(value) {
     return (value ?: '').toString().split(',')*.trim().findAll { item -> item }
 }

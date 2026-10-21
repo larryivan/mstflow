@@ -18,7 +18,7 @@ include { PREPROCESS } from './subworkflows/preprocess'
 include { PROFILE } from './subworkflows/profile'
 include { ATTRIBUTION } from './subworkflows/attribution'
 include {
-    binScript; isArchive; metaFromRow; readListFromRow; rejectReservedArgs;
+    binScript; isArchive; isOn; metaFromRow; readListFromRow; rejectReservedArgs;
     requireBrackenDistributions; requireDirectory; splitList; taxdumpFile
 } from './subworkflows/utils'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
@@ -32,7 +32,7 @@ workflow {
 
     def methods = splitList(params.attribution_methods)
     def database = resolveDatabase()
-    def countTable = params.run_kraken2 && (params.run_bracken || params.classifier == 'krakenuniq')
+    def countTable = isOn(params.run_kraken2) && (isOn(params.run_bracken) || params.classifier == 'krakenuniq')
     def taxdumpNodes = countTable && params.taxon_filter == 'prokaryote'
         ? taxdumpFile(params.taxdump, 'nodes.dmp', 'taxon_filter=prokaryote')
         : file("${projectDir}/assets/no_taxdump.nodes.dmp", checkIfExists: true)
@@ -53,7 +53,7 @@ workflow {
     PREPROCESS(samples)
     qc_files = PREPROCESS.out.qc
 
-    if (params.run_kraken2) {
+    if (isOn(params.run_kraken2)) {
         PROFILE(PREPROCESS.out.reads, metadata, channel.value(database), channel.value(taxdumpNodes))
         qc_files = qc_files.mix(PROFILE.out.qc)
 
@@ -150,10 +150,10 @@ def checkParameters() {
     ])
     rejectReservedArgs('bracken_extra_args', params.bracken_extra_args, ['-d', '-i', '-o', '-w', '-r', '-l', '-t'])
 
-    if (params.run_bracken && !params.run_kraken2) {
+    if (isOn(params.run_bracken) && !isOn(params.run_kraken2)) {
         error 'run_bracken requires run_kraken2'
     }
-    if ((params.kraken2_min_distinct_minimizers as int) > 0 && !params.kraken2_report_minimizer_data) {
+    if ((params.kraken2_min_distinct_minimizers as int) > 0 && !isOn(params.kraken2_report_minimizer_data)) {
         error 'kraken2_min_distinct_minimizers needs kraken2_report_minimizer_data = true'
     }
     def known = ['sourcetracker2', 'feast', 'fastst', 'sourceid_nmf', 'sourcepredict']
@@ -161,7 +161,7 @@ def checkParameters() {
     if (methods - known) {
         error "Unknown attribution method(s): ${(methods - known).join(', ')}. Choose from ${known.join(', ')}."
     }
-    if (methods && !(params.run_bracken || params.classifier == 'krakenuniq')) {
+    if (methods && !(isOn(params.run_bracken) || params.classifier == 'krakenuniq')) {
         error 'Source attribution needs a count table: with Kraken2, set run_bracken = true'
     }
     if (!(params.attribution_label ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
@@ -172,7 +172,7 @@ def checkParameters() {
     if (imageOnly && !workflow.containerEngine && !workflow.stubRun) {
         error "${imageOnly.join(' and ')} run only from MSTFlow's attribution container; use -profile docker, singularity or apptainer"
     }
-    if (params.attribution_cv && !methods) {
+    if (isOn(params.attribution_cv) && !methods) {
         error 'attribution_cv needs at least one method in attribution_methods'
     }
 }
@@ -181,7 +181,7 @@ def checkParameters() {
 // A database is a directory, or a .tar.gz archive (local or a URL) that the workflow
 // unpacks once. Bracken always uses the same snapshot as Kraken2.
 def resolveDatabase() {
-    if (!params.run_kraken2) {
+    if (!isOn(params.run_kraken2)) {
         return null
     }
     if (params.classifier == 'krakenuniq') {
@@ -206,7 +206,7 @@ def resolveDatabase() {
         return file(params.kraken2_db, checkIfExists: true)
     }
     def directory = requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'], hint)
-    if (params.run_bracken) {
+    if (isOn(params.run_bracken)) {
         requireBrackenDistributions(directory)
     }
     return directory

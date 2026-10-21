@@ -5,7 +5,7 @@ include { SELECT_BRACKEN_LENGTH } from '../modules/select_bracken_length'
 include { BRACKEN_PROFILE } from '../modules/bracken'
 include { KRAKENUNIQ_PROFILE } from '../modules/krakenuniq'
 include { BUILD_FEATURE_TABLE } from '../modules/build_feature_table'
-include { binScript; isArchive } from './utils'
+include { binScript; isArchive; isOn } from './utils'
 
 /*
  * Classify every molecule and merge the samples into one count table at one rank.
@@ -26,7 +26,7 @@ workflow PROFILE {
     def fragmentHelper = channel.value(binScript('mstflow_fragment_tools.py'))
 
     if (isArchive(krakenUniq ? params.krakenuniq_db : params.kraken2_db)) {
-        UNTAR_DATABASE(database, krakenUniq ? 'krakenuniq' : (params.run_bracken ? 'kraken2+bracken' : 'kraken2'))
+        UNTAR_DATABASE(database, krakenUniq ? 'krakenuniq' : (isOn(params.run_bracken) ? 'kraken2+bracken' : 'kraken2'))
         db = UNTAR_DATABASE.out.db.first()
     } else {
         db = database
@@ -59,7 +59,7 @@ workflow PROFILE {
             .mix(KRAKEN2_PROFILE.out.qc)
             .mix(KRAKEN2_PROFILE.out.minimizer_reports)
 
-        if (params.run_bracken) {
+        if (isOn(params.run_bracken)) {
             SELECT_BRACKEN_LENGTH(
                 KRAKEN2_PROFILE.out.reports.map { meta, _report, readLength -> tuple(meta, readLength) }.combine(db),
                 fragmentHelper
@@ -87,7 +87,7 @@ workflow PROFILE {
     }
 
     // Kraken2 reports alone make no count table; Bracken or KrakenUniq do.
-    if (krakenUniq || params.run_bracken) {
+    if (krakenUniq || isOn(params.run_bracken)) {
         BUILD_FEATURE_TABLE(
             metadata, bracken_tables, reports, minimizer_reports, taxdump_nodes, binScript('build_feature_table.py')
         )
