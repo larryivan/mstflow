@@ -16,5 +16,12 @@ host_fasta: /path/to/chm13v2.0.fa     # with its BWA index (.amb .ann .bwt .pac 
 # taxon_filter: prokaryote
 # taxdump: /path/to/taxdump
 
-# Attribute samples to source environments (needs source_sink and model_source_env columns):
-# run_sourcetracker2: true
+# Attribute samples to source environments (needs source_sink and model_source_env
+# columns), and score each method on the sources, one study (project column) at a time:
+# attribution_methods: sourcetracker2,feast
+# attribution_cv: true
+
+# KrakenUniq in place of Kraken2 and Bracken:
+# classifier: krakenuniq
+# krakenuniq_db: /path/to/krakenuniq_db
+# krakenuniq_preload_size: 32G

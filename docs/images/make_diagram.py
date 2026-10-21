@@ -92,8 +92,8 @@ def build(name):
     # optional destination
     s += [f'<circle cx="{XOPT}" cy="{mid}" r="6.5" fill="{t["st_fill"]}" stroke="{t["opt"]}" '
           f'stroke-width="2.4"/>',
-          label(XOPT, A_Y - LW / 2 - 4.5 - 10, "SourceTracker2", t, fill=t["muted"]),
-          label(XOPT, below, "optional", t, size=11, weight=400, fill=t["muted"])]
+          label(XOPT, A_Y - LW / 2 - 4.5 - 10, "Source attribution", t, fill=t["muted"]),
+          label(XOPT, below, "optional, 5 methods", t, size=11, weight=400, fill=t["muted"])]
     s.append("</svg>")
     return "\n".join(s) + "\n"
 

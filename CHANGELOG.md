@@ -5,8 +5,24 @@
 First public release.
 
 ### Added
-- `-profile test` runs every step on bundled synthetic data in about a minute, with no
-  downloads.
+- Source attribution with five methods on the same count table: SourceTracker2, FEAST,
+  FastST (experimental), SourceID-NMF and SourcePredict (`--attribution_methods`). Their
+  estimates, calls and agreement are written side by side, with one figure
+  (`attribution/<label>/`). See docs/attribution.md.
+- Cross-validation of every method on the sources (`--attribution_cv`): the sources of
+  one study at a time are held out as sinks of known origin, and each method's coverage
+  and accuracy on them are reported.
+- KrakenUniq as an alternative classifier (`--classifier krakenuniq`), with aMeta's
+  unique k-mer and read thresholds.
+- `--kraken2_min_distinct_minimizers` removes taxa whose reads cover too few distinct
+  minimizers, sample by sample, and lists what it removed.
+- `-profile test` runs every step, all attribution methods and their cross-validation
+  included, on excerpts of 15 published ancient and modern libraries with a 274-genome
+  Kraken2/Bracken database, downloaded from a release asset (about 1.8 GB). The recipe
+  is in `assets/test`.
+- `--kraken2_db` accepts a `.tar.gz` archive, local or a URL, such as the prebuilt
+  indexes, and unpacks it. The samplesheet, reads, host genome and taxdump can also be
+  URLs.
 - `--help`, with parameter types, defaults and accepted values, and validation of every
   parameter against `nextflow_schema.json`.
 - `summary/sample_summary.tsv`: molecules after each step, classified fraction, taxa
@@ -19,13 +35,21 @@ First public release.
 
 ### Changed
 - Samplesheet: only `sample_id`, `fastq_1` and `age_group` are required. `layout` is
-  inferred from `fastq_2`, which may be left empty or omitted. Relative paths are read
-  relative to the samplesheet (paths relative to the launch directory still work).
+  inferred from `fastq_2`, which may be left empty or omitted, and libraries with
+  `host_action` set to `skip` need no `host_ref`. Relative paths are read relative to
+  the samplesheet (paths relative to the launch directory still work).
 - Bracken runs by default, and `--bracken_db` defaults to `--kraken2_db`.
 - Parameters are validated strictly against their declared types: booleans must be
   `true` or `false`, and `--bracken_read_len` takes `auto` or a positive integer.
 - The `docker` profile runs the `linux/amd64` images on any host, including ARM.
+- The workflow is split into preprocessing, profiling and attribution subworkflows.
+- SourceTracker2 options are now attribution options (`--attribution_*`) shared by
+  every method, and its priors and sampling settings are parameters
+  (`--sourcetracker2_alpha2` and others) instead of free-form extra arguments. Results
+  move from `source_attribution/sourcetracker2/` to `attribution/`.
 
 ### Removed
 - The `slurm`, `slurm_conda`, `slurm_apptainer` and `slurm_singularity` profiles.
   Choose a scheduler in your own config instead, passed with `-c`; see docs/usage.md.
+- `--run_sourcetracker2`, `--sourcetracker2_extra_args` and `--sourcetracker2_loo`;
+  cross-validation by study replaces SourceTracker2's leave-one-out.

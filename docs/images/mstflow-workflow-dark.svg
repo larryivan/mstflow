@@ -22,6 +22,6 @@
 <rect x="670" y="98.0" width="16" height="24.0" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
 <text x="678" y="88.0" text-anchor="middle" font-size="13" font-weight="650" letter-spacing="-0.1" fill="#e6edf3">Genus table</text>
 <circle cx="794" cy="110.0" r="6.5" fill="#e6edf3" stroke="#59626c" stroke-width="2.4"/>
-<text x="794" y="88.0" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#8d96a0">SourceTracker2</text>
-<text x="794" y="137.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">optional</text>
+<text x="794" y="88.0" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#8d96a0">Source attribution</text>
+<text x="794" y="137.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">optional, 5 methods</text>
 </svg>
