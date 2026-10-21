@@ -1,142 +1,141 @@
 #!/usr/bin/env python3
-"""Generate the bundled MSTFlow test dataset.
+"""Download everything the test dataset is built from, into build/.
 
-Everything here is synthetic and deterministic: random genomes stand in for eight
-real genera, a random 'host' chromosome stands in for the host reference, and the
-reads are cut from them with fragment lengths typical of ancient and modern
-libraries. Taxon IDs and names are real NCBI ones so the outputs read naturally,
-but no sequence comes from those organisms.
+- reads: the first 50,000 reads (pairs) of each library in libraries.tsv, from ENA
+- genomes: the reference genomes pinned in genomes.tsv, from NCBI Datasets
+- taxonomy: the NCBI lineages of those genomes, cut from the current taxdump (nodes.dmp,
+  names.dmp, and an empty merged.dmp, which SourcePredict's taxonomy reader expects)
+- host: the human mitochondrial genome (NC_012920.1)
+- samplesheet.tsv, pointing at the reads by file name
 
-Run this, then build_test_db.sh, to regenerate everything in this directory.
+Then run build_test_db.sh to build the Kraken2/Bracken database and the release files.
+Only the Python standard library is used.
 """
+import csv
 import gzip
-import random
+import io
+import sys
+import tarfile
+import time
+import urllib.request
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SEED = 20261021
-GENOME_LEN = 40_000
-HOST_LEN = 60_000
-
-# taxid, name, rank, parent
-TAXA = [
-    (1, "root", "no rank", 1),
-    (131567, "cellular organisms", "no rank", 1),
-    (2, "Bacteria", "superkingdom", 131567),
-    (2157, "Archaea", "superkingdom", 131567),
-    (2759, "Eukaryota", "superkingdom", 131567),
-    (561, "Escherichia", "genus", 2), (562, "Escherichia coli", "species", 561),
-    (1301, "Streptococcus", "genus", 2), (1309, "Streptococcus mutans", "species", 1301),
-    (1386, "Bacillus", "genus", 2), (1423, "Bacillus subtilis", "species", 1386),
-    (1678, "Bifidobacterium", "genus", 2), (1680, "Bifidobacterium adolescentis", "species", 1678),
-    (286, "Pseudomonas", "genus", 2), (287, "Pseudomonas aeruginosa", "species", 286),
-    (1883, "Streptomyces", "genus", 2), (1902, "Streptomyces coelicolor", "species", 1883),
-    (2172, "Methanobrevibacter", "genus", 2157), (2173, "Methanobrevibacter smithii", "species", 2172),
-    (4930, "Saccharomyces", "genus", 2759), (4932, "Saccharomyces cerevisiae", "species", 4930),
-]
-SPECIES = {562: 0.50, 1309: 0.37, 1423: 0.43, 1680: 0.60, 287: 0.66, 1902: 0.72, 2173: 0.31, 4932: 0.38}
-
-ADAPTER1 = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCACACAGTGATCTCGTATGCCGTCTTCTGCTTG"
-ADAPTER2 = "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATTAAAAAA"
-
-# sample, age, layout, read length, fragment range, composition (source -> share)
-SAMPLES = [
-    ("ancient_pe", "ancient", "PE", 75, (35, 80),
-     {1309: .30, 2173: .15, 1680: .10, "host": .30, "noise": .15}),
-    ("ancient_se", "ancient", "SE", 75, (35, 75),
-     {1423: .25, 1902: .25, 287: .10, "host": .20, "noise": .20}),
-    ("modern_pe", "modern", "PE", 100, (220, 400),
-     {562: .40, 1680: .20, 4932: .10, "host": .20, "noise": .10}),
-    ("modern_se", "modern", "SE", 100, (120, 300),
-     {287: .30, 562: .20, 1423: .20, "host": .10, "noise": .20}),
-]
-N_READS = 3000
-COMP = str.maketrans("ACGT", "TGCA")
+BUILD = HERE / "build"
+READS_PER_LIBRARY = 50_000
 
 
-def genome(rng, length, gc):
-    weights = [(1 - gc) / 2, gc / 2, gc / 2, (1 - gc) / 2]
-    return "".join(rng.choices("ACGT", weights=weights, k=length))
+def fetch(url, timeout=300):
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return response.read()
+        except Exception as exc:
+            print(f"  retrying ({exc})", file=sys.stderr)
+            time.sleep(3 * (attempt + 1))
+    raise SystemExit(f"could not download {url}")
 
 
-def revcomp(seq):
-    return seq.translate(COMP)[::-1]
+def ena_fastq_urls(run, layout):
+    digits = run[3:]
+    sub = "" if len(digits) <= 6 else "/" + digits[6:].rjust(3, "0")
+    base = f"https://ftp.sra.ebi.ac.uk/vol1/fastq/{run[:6]}{sub}/{run}/{run}"
+    return [f"{base}_1.fastq.gz", f"{base}_2.fastq.gz"] if layout == "PE" else [f"{base}.fastq.gz"]
 
 
-def mutate(rng, seq, rate=0.004):
-    out = list(seq)
-    for i in range(len(out)):
-        if rng.random() < rate:
-            out[i] = rng.choice([b for b in "ACGT" if b != out[i]])
-    return "".join(out)
+def head_fastq(url, out, n):
+    """Stream a gzipped FASTQ and keep its first n records, stopping once they are read."""
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(url, timeout=300) as response, \
+                    gzip.open(response, "rt") as fin, gzip.GzipFile(out, "wb", mtime=0) as fout:
+                for _ in range(n):
+                    record = [fin.readline() for _ in range(4)]
+                    if not record[3]:
+                        break
+                    if not (record[0].startswith("@") and record[2].startswith("+")):
+                        raise ValueError(f"not FASTQ: {url}")
+                    fout.write("".join(record).encode())
+            return
+        except Exception as exc:
+            print(f"  retrying {url} ({exc})", file=sys.stderr)
+            time.sleep(3 * (attempt + 1))
+    raise SystemExit(f"could not download {url}")
 
 
-def fragment(rng, source, lo, hi, sequences):
-    length = rng.randint(lo, hi)
-    if source == "noise":
-        return genome(rng, length, 0.5)
-    seq = sequences[source]
-    start = rng.randrange(0, len(seq) - length)
-    frag = seq[start:start + length]
-    return mutate(rng, frag if rng.random() < 0.5 else revcomp(frag))
+def reads(libraries):
+    out = BUILD / "reads"
+    out.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for lib in libraries:
+        urls = ena_fastq_urls(lib["run"], lib["layout"])
+        names = [f"{lib['sample_id']}_R{i}.fastq.gz" for i in (1, 2)] if len(urls) == 2 else [f"{lib['sample_id']}.fastq.gz"]
+        for url, name in zip(urls, names):
+            head_fastq(url, out / name, READS_PER_LIBRARY)
+        files = names
+        print(f"reads   {lib['sample_id']:10s} {lib['run']}", flush=True)
+        rows.append([lib["sample_id"], files[0], files[1] if len(files) > 1 else "", lib["age_group"],
+                     lib["host_action"], lib["source_sink"], lib["model_source_env"], lib["project"], lib["run"]])
+    with open(BUILD / "samplesheet.tsv", "w") as fh:
+        fh.write("sample_id\tfastq_1\tfastq_2\tage_group\thost_action\tsource_sink\tmodel_source_env\tproject\trun\n")
+        fh.writelines("\t".join(r) + "\n" for r in rows)
 
 
-def write_fastq(path, records):
-    with gzip.GzipFile(path, "wb", mtime=0) as gz:
-        for name, seq in records:
-            gz.write(f"@{name}\n{seq}\n+\n{'I' * len(seq)}\n".encode())
+def genomes(pinned):
+    with open(BUILD / "library.fna", "w") as library:
+        for g in pinned:
+            url = (f"https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/{g['accession']}/download"
+                   "?include_annotation_type=GENOME_FASTA")
+            archive = zipfile.ZipFile(io.BytesIO(fetch(url)))
+            for name in archive.namelist():
+                if not name.endswith((".fna", ".fa", ".fasta")):
+                    continue
+                for line in archive.read(name).decode().splitlines():
+                    if line.startswith(">"):
+                        library.write(f">{line[1:].split()[0]}|kraken:taxid|{g['species_taxid']}\n")
+                    elif line:
+                        library.write(line + "\n")
+            print(f"genome  {g['accession']:18s} {g['species']}", flush=True)
+
+
+def taxonomy(pinned):
+    dump = tarfile.open(fileobj=io.BytesIO(fetch("https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz")))
+    nodes = dump.extractfile("nodes.dmp").read().decode().splitlines(keepends=True)
+    parent = {line.split("\t|\t")[0]: line.split("\t|\t")[1] for line in nodes}
+    keep = set()
+    for g in pinned:
+        taxid = g["species_taxid"]
+        while taxid not in keep:
+            keep.add(taxid)
+            if taxid == "1":
+                break
+            taxid = parent[taxid]
+    out = BUILD / "taxonomy"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "nodes.dmp").write_text("".join(sorted((l for l in nodes if l.split("\t|\t")[0] in keep),
+                                                  key=lambda l: int(l.split("\t|\t")[0]))))
+    names = dump.extractfile("names.dmp").read().decode().splitlines(keepends=True)
+    (out / "names.dmp").write_text("".join(l for l in names if l.split("\t|\t")[0] in keep
+                                           and l.split("\t|\t")[3].startswith("scientific name")))
+    (out / "merged.dmp").write_text("")
+    print(f"taxonomy {len(keep)} taxa", flush=True)
+
+
+def host():
+    url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id=NC_012920.1&rettype=fasta&retmode=text"
+    (BUILD / "host.fa").write_bytes(fetch(url))
+    print("host    NC_012920.1 (human mitochondrion)", flush=True)
 
 
 def main():
-    rng = random.Random(SEED)
-    sequences = {taxid: genome(rng, GENOME_LEN, gc) for taxid, gc in SPECIES.items()}
-    sequences["host"] = genome(rng, HOST_LEN, 0.41)
-
-    (HERE / "genomes").mkdir(exist_ok=True)
-    with open(HERE / "genomes" / "library.fna", "w") as fh:
-        for taxid, seq in ((t, sequences[t]) for t in SPECIES):
-            name = next(n for t, n, _, _ in TAXA if t == taxid).replace(" ", "_")
-            fh.write(f">{name}|kraken:taxid|{taxid}\n")
-            fh.writelines(seq[i:i + 80] + "\n" for i in range(0, len(seq), 80))
-
-    (HERE / "host").mkdir(exist_ok=True)
-    with open(HERE / "host" / "host.fa", "w") as fh:
-        fh.write(">host_chr1 synthetic host chromosome\n")
-        fh.writelines(sequences["host"][i:i + 80] + "\n" for i in range(0, HOST_LEN, 80))
-
-    tax = HERE / "taxonomy"
-    tax.mkdir(exist_ok=True)
-    with open(tax / "nodes.dmp", "w") as nodes, open(tax / "names.dmp", "w") as names:
-        for taxid, name, rank, parent in TAXA:
-            nodes.write(f"{taxid}\t|\t{parent}\t|\t{rank}\t|\t\t|\n")
-            names.write(f"{taxid}\t|\t{name}\t|\t\t|\tscientific name\t|\n")
-
-    (HERE / "reads").mkdir(exist_ok=True)
-    rows = []
-    for sample, age, layout, read_len, (lo, hi), mix in SAMPLES:
-        sources = list(mix)
-        weights = [mix[s] for s in sources]
-        r1, r2 = [], []
-        for i in range(N_READS):
-            frag = fragment(rng, rng.choices(sources, weights)[0], lo, hi, sequences)
-            name = f"{sample}.{i + 1}"
-            if layout == "PE":
-                r1.append((f"{name}/1", (frag + ADAPTER1)[:read_len]))
-                r2.append((f"{name}/2", (revcomp(frag) + ADAPTER2)[:read_len]))
-            else:
-                r1.append((name, (frag + ADAPTER1)[:read_len]))
-        if layout == "PE":
-            write_fastq(HERE / "reads" / f"{sample}_R1.fastq.gz", r1)
-            write_fastq(HERE / "reads" / f"{sample}_R2.fastq.gz", r2)
-            rows.append((sample, f"reads/{sample}_R1.fastq.gz", f"reads/{sample}_R2.fastq.gz", age))
-        else:
-            write_fastq(HERE / "reads" / f"{sample}.fastq.gz", r1)
-            rows.append((sample, f"reads/{sample}.fastq.gz", "", age))
-
-    with open(HERE / "samplesheet.tsv", "w") as fh:
-        fh.write("sample_id\tfastq_1\tfastq_2\tage_group\n")
-        fh.writelines("\t".join(row) + "\n" for row in rows)
-    print("wrote synthetic genomes, host, taxonomy, reads and samplesheet to", HERE)
+    BUILD.mkdir(exist_ok=True)
+    libraries = list(csv.DictReader(open(HERE / "libraries.tsv"), delimiter="\t"))
+    pinned = list(csv.DictReader(open(HERE / "genomes.tsv"), delimiter="\t"))
+    reads(libraries)
+    host()
+    taxonomy(pinned)
+    genomes(pinned)
 
 
 if __name__ == "__main__":

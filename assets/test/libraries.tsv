@@ -1,0 +1,16 @@
+sample_id	run	project	layout	age_group	host_action	source_sink	model_source_env	material
+oral_1	ERR3579820	PRJEB34569	PE	modern	remove	source	oral	dental calculus
+oral_2	ERR3307051	PRJEB31185	PE	modern	remove	source	oral	dental calculus
+oral_3	ERR3579737	PRJEB34569	PE	ancient	remove	source	oral	dental calculus
+gut_1	SRR5898909	PRJNA397112	PE	modern	remove	source	gut	faeces
+gut_2	SRR5763463	PRJNA392180	SE	modern	remove	source	gut	faeces
+gut_3	SRR6451716	PRJNA354235	PE	modern	remove	source	gut	faeces
+gut_4	ERR3678629	PRJEB33577	PE	ancient	remove	source	gut	human paleofaeces
+soil_1	ERR2603035	PRJEB24121	PE	modern	skip	source	soil	topsoil
+soil_2	ERR2603043	PRJEB24121	PE	modern	skip	source	soil	topsoil
+lab_1	ERR10114869	PRJEB55583	PE	ancient	skip	source	laboratory	extraction blank
+lab_2	ERR10114868	PRJEB55583	PE	ancient	skip	source	laboratory	extraction blank
+calculus	ERR10114857	PRJEB55583	PE	ancient	remove	sink	NA	dental calculus
+coprolite	ERR5766170	PRJEB44507	PE	ancient	remove	sink	NA	human paleofaeces
+sediment	ERR13348407	PRJEB77295	SE	ancient	skip	sink	NA	paleosoil
+bone	ERR1777568	PRJEB18722	SE	ancient	remove	sink	NA	human bone
