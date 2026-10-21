@@ -42,7 +42,13 @@ jobs:
         with:
           version: ${{ matrix.nextflow }}
       - run: nextflow run ${{ github.workspace }} -profile test,docker --outdir results
-      - name: Check the sample summary
+      - name: Check the outputs
         run: |
-          test "$(tail -n +2 results/summary/sample_summary.tsv | wc -l)" -eq 4
-          grep -q "modern_pe.*few_genera" results/summary/sample_summary.tsv
+          # 15 libraries; the bone library is mostly human DNA and is flagged.
+          test "$(tail -n +2 results/summary/sample_summary.tsv | wc -l)" -eq 15
+          grep -q "^bone.*few_genera" results/summary/sample_summary.tsv
+          # Five methods for three sinks (bone is too shallow and is left out), each
+          # scored by cross-validation.
+          test "$(tail -n +2 results/attribution/default/comparison.tsv | wc -l)" -eq 3
+          cut -f2 results/attribution/default/inputs/attribution_excluded_samples.tsv | grep -qx bone
+          test "$(tail -n +2 results/attribution/default/evaluation/evaluation.tsv | wc -l)" -eq 5

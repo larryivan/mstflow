@@ -1,0 +1,35 @@
+name: Containers
+
+# Builds the image for the attribution methods that are not in Bioconda (FEAST, FastST
+# and SourceID-NMF's libraries) and publishes it to the GitHub container registry.
+# Run by hand when containers/attribution changes, then pin the new digest in
+# nextflow.config (container_attribution).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image version, as in nextflow.config
+        required: true
+        default: '1.0.0'
+
+jobs:
+  attribution:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: containers/attribution
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/mstflow-attribution:${{ inputs.version }}
+      - run: echo "Pin this in nextflow.config - ghcr.io/${{ github.repository_owner }}/mstflow-attribution@${{ steps.build.outputs.digest }}"
