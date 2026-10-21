@@ -11,30 +11,26 @@ process KRAKENUNIQ_PROFILE {
     publishDir "${params.outdir}/krakenuniq", mode: 'copy'
 
     input:
-    tuple val(meta), path(reads), path(read_length_stats), path(input_mode), path(database)
+    tuple val(meta), path(reads), path(read_length_stats), path(database)
 
     output:
     tuple val(meta), path("${meta.id}.krakenuniq.report.txt"), path("${meta.id}.krakenuniq.read_length.tsv"), emit: reports
-    path "${meta.id}.krakenuniq.fragment_qc.tsv", emit: qc
     path "${meta.id}.krakenuniq.versions.yml", emit: versions
 
     script:
     def readList = (reads instanceof List ? reads : [reads]).collect { read -> read.toString() }
-    def pairedR1 = readList.findAll { read -> read.contains('.kraken_input_R1.') }
-    def pairedR2 = readList.findAll { read -> read.contains('.kraken_input_R2.') }
-    def orderedReads = readList.size() == 2 ? [pairedR1[0], pairedR2[0]] : readList
+    def paired = readList.size() == 2
+    // PREPARE_KRAKEN_INPUT names the mates; do not rely on staging order for R1 and R2.
+    def orderedReads = paired
+        ? [readList.find { read -> read.contains('.kraken_input_R1.') }, readList.find { read -> read.contains('.kraken_input_R2.') }]
+        : readList
     def preload = params.krakenuniq_preload_size ? "--preload-size ${params.krakenuniq_preload_size}" : '--preload'
     """
-    case "\$(tr -d '\\r\\n' < ${input_mode})" in
-        paired) paired='--paired' ;;
-        single) paired='' ;;
-        *) echo "Invalid prepared input mode in ${input_mode}" >&2; exit 1 ;;
-    esac
     krakenuniq \\
         --db ${database} \\
         --threads ${task.cpus} \\
         ${preload} \\
-        \$paired \\
+        ${paired ? '--paired' : ''} \\
         --report-file ${meta.id}.krakenuniq.report.txt \\
         --output off \\
         ${orderedReads.collect { read -> "\"${read}\"" }.join(' ')}
@@ -48,7 +44,6 @@ process KRAKENUNIQ_PROFILE {
     fi
 
     cp ${read_length_stats} ${meta.id}.krakenuniq.read_length.tsv
-    cp ${read_length_stats} ${meta.id}.krakenuniq.fragment_qc.tsv
     printf '"${task.process}":\\n    krakenuniq: "%s"\\n' "\$(krakenuniq --version 2>&1 | awk 'NR == 1 { print \$NF }')" \\
         > ${meta.id}.krakenuniq.versions.yml
     """
@@ -58,7 +53,6 @@ process KRAKENUNIQ_PROFILE {
     printf '%%\\treads\\ttaxReads\\tkmers\\tdup\\tcov\\ttaxID\\trank\\ttaxName\\n0\\t0\\t0\\t0\\t0\\tNA\\t0\\tno rank\\tunclassified\\n100\\t10\\t0\\t10\\t1\\tNA\\t1\\tno rank\\troot\\n100\\t10\\t10\\t10\\t1\\tNA\\t1301\\tgenus\\t  Streptococcus\\n' \\
         > ${meta.id}.krakenuniq.report.txt
     cp ${read_length_stats} ${meta.id}.krakenuniq.read_length.tsv
-    cp ${read_length_stats} ${meta.id}.krakenuniq.fragment_qc.tsv
     printf '"${task.process}":\\n    krakenuniq: "stub"\\n' > ${meta.id}.krakenuniq.versions.yml
     """
 }

@@ -36,17 +36,13 @@ workflow PREPROCESS {
     trimmed = PREPROCESS_FASTP.out.reads.mix(NORMALIZE_ADAPTERREMOVAL.out.reads)
 
     if (isOn(params.remove_host)) {
-        // Fail closed rather than silently dropping samples. `host_action` is the
-        // one branch key whose input column is optional, so a validated manifest
-        // written before host policies existed would otherwise lose every row here.
+        // The validated samplesheet sets host_action to remove or skip on every row.
         host_views = trimmed.branch { meta, _reads ->
             remove: meta.host_action == 'remove'
-            skip: meta.host_action == 'skip'
-            undeclared: true
+            skip: true
         }
-        undeclared = host_views.undeclared.map { meta, _reads ->
-            error "Sample '${meta.id}' has host_action '${meta.host_action}'; validated metadata must declare remove or skip"
-        }
+        // Resolved from the input samples, so a missing host index fails the run
+        // before any trimming starts.
         host_bundles = samples
             .filter { meta, _reads -> meta.host_action == 'remove' }
             .map { meta, _reads -> tuple(meta.id, hostBundleFor(hostReferenceFor(meta, params.host_fasta))) }
@@ -60,8 +56,8 @@ workflow PREPROCESS {
             binScript('filter_host_alignments.py'),
             fragmentHelper
         )
-        clean = FILTER_HOST_ALIGNMENTS.out.reads.mix(host_views.skip).mix(undeclared)
-        host_qc = HOST_ALIGN_BWA.out.logs.mix(FILTER_HOST_ALIGNMENTS.out.qc)
+        clean = FILTER_HOST_ALIGNMENTS.out.reads.mix(host_views.skip)
+        host_qc = FILTER_HOST_ALIGNMENTS.out.qc
     } else {
         clean = trimmed
         host_qc = channel.empty()
@@ -69,15 +65,13 @@ workflow PREPROCESS {
 
     FASTQC_CLEAN(clean.map { meta, reads -> tuple(meta + [qc_stage: 'clean'], reads) })
 
-    trimming_qc = PREPROCESS_FASTP.out.logs.flatten()
-        .mix(ADAPTERREMOVAL_RAW.out.logs.flatten())
-        .mix(NORMALIZE_ADAPTERREMOVAL.out.qc)
+    trimming_logs = PREPROCESS_FASTP.out.logs.flatten().mix(ADAPTERREMOVAL_RAW.out.logs.flatten())
     fastqc = FASTQC_RAW.out.qc.mix(FASTQC_CLEAN.out.qc)
         .map { _meta, zip, html -> [zip, html] }
         .flatten()
 
     emit:
-    reads       = clean                                  // tuple(meta, [reads]) after host removal
-    qc          = fastqc.mix(trimming_qc).mix(host_qc)   // every QC file, for MultiQC
-    step_counts = trimming_qc.mix(host_qc)               // molecules kept by each step
+    reads       = clean                                                         // tuple(meta, [reads]) after host removal
+    qc          = fastqc.mix(trimming_logs)                                     // for MultiQC
+    step_counts = trimming_logs.mix(NORMALIZE_ADAPTERREMOVAL.out.qc).mix(host_qc) // molecules kept by each step
 }

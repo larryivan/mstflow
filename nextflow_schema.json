@@ -135,13 +135,6 @@
                     "minimum": 0,
                     "maximum": 9,
                     "hidden": true
-                },
-                "fragment_pair_gap": {
-                    "type": "integer",
-                    "description": "Deprecated; affects only the legacy `combine` helper subcommand.",
-                    "default": 100,
-                    "minimum": 1,
-                    "hidden": true
                 }
             }
         },

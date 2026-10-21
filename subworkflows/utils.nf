@@ -171,10 +171,6 @@ def hostBundleFor(reference) {
         }
         bundle << index
     }
-    def fai = fasta.resolveSibling(fasta.name + '.fai')
-    if (fai.exists()) {
-        bundle << fai
-    }
     return bundle
 }
 

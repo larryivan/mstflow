@@ -47,7 +47,6 @@ hidden from `--help` unless `--showHidden` is given.
 | `--fastp_extra_args` | Extra arguments passed to fastp. | string |  |
 | `--adapterremoval_extra_args` | Extra arguments passed to AdapterRemoval. | string |  |
 | `--fastq_gzip_level` | Gzip level (0-9) for FASTQ written by the workflow's own helpers. | integer | `6` |
-| `--fragment_pair_gap` | Deprecated; affects only the legacy `combine` helper subcommand. | integer | `100` |
 
 </details>
 

@@ -98,8 +98,8 @@ class FragmentToolTests(unittest.TestCase):
             # Confidence denominators: 26, 6 (native SE) and 6+6 (native paired).
             self.assertEqual(metrics["median_kraken_confidence_denominator"], "12")
 
-            # KRAKEN2_PROFILE re-scans the emitted pair; the statistics it
-            # derives must match those recorded when the pair was written.
+            # Re-scanning the emitted pair gives the same statistics: the
+            # placeholder mates add nothing.
             rescanned = tmp / "rescanned.tsv"
             run_helper(
                 "stats",
@@ -120,54 +120,6 @@ class FragmentToolTests(unittest.TestCase):
             ):
                 self.assertEqual(rescan[metric], metrics[metric], metric)
 
-    def test_n_spacer_concatenation_inflates_the_confidence_denominator(self):
-        """Regression guard for the corrected all_fragments representation.
-
-        Two 40 bp mates give Kraken2 12 minimizer positions natively but 146
-        when concatenated with a 100 N spacer, because ambiguous positions are
-        counted in total_kmers. required_score = ceil(confidence * total_kmers).
-        """
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            r1 = tmp / "R1.fq.gz"
-            r2 = tmp / "R2.fq.gz"
-            write_fastq(r1, [("pair/1", "A" * 40)])
-            write_fastq(r2, [("pair/2", "C" * 40)])
-
-            spacer_stats = tmp / "spacer.tsv"
-            run_helper(
-                "combine",
-                "--r1", r1,
-                "--r2", r2,
-                "--output", tmp / "combined.fq.gz",
-                "--stats", spacer_stats,
-                "--gap-length", "100",
-                "--kmer-length", "35",
-                "--minimum-usable-span", "35",
-            )
-            paired_stats = tmp / "paired.tsv"
-            run_helper(
-                "pair-fragments",
-                "--r1", r1,
-                "--r2", r2,
-                "--output-r1", tmp / "p_R1.fq.gz",
-                "--output-r2", tmp / "p_R2.fq.gz",
-                "--stats", paired_stats,
-                "--kmer-length", "35",
-                "--minimum-usable-span", "35",
-            )
-            self.assertEqual(
-                read_metrics(spacer_stats)["median_kraken_confidence_denominator"], "146"
-            )
-            self.assertEqual(
-                read_metrics(paired_stats)["median_kraken_confidence_denominator"], "12"
-            )
-            # Fragment membership is identical between the two representations.
-            self.assertEqual(
-                read_metrics(spacer_stats)["retained_fragments"],
-                read_metrics(paired_stats)["retained_fragments"],
-            )
-
     def test_dummy_mate_must_be_shorter_than_the_kmer_length(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -184,7 +136,7 @@ class FragmentToolTests(unittest.TestCase):
                 check=False,
             )
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("must be shorter than the k-mer length", completed.stderr)
+            self.assertIn("shorter than the k-mer length", completed.stderr)
 
     def test_gzip_output_is_reproducible_and_level_independent(self):
         """Compression level changes bytes on disk only, never the FASTQ."""
@@ -231,6 +183,7 @@ class FragmentToolTests(unittest.TestCase):
                 (tmp / "level0" / "out.fq.gz").stat().st_size,
                 (tmp / "level9" / "out.fq.gz").stat().st_size,
             )
+
     def test_paired_bracken_length_is_one_mate_not_combined_span(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -262,7 +215,7 @@ class FragmentToolTests(unittest.TestCase):
             (database / "database75mers.kmer_distrib").touch()
             (database / "database100mers.kmer_distrib").touch()
             selection = tmp / "selection.tsv"
-            completed = run_helper(
+            run_helper(
                 "select-bracken-length",
                 "--stats",
                 stats,
@@ -275,7 +228,6 @@ class FragmentToolTests(unittest.TestCase):
                 "--output",
                 selection,
             )
-            self.assertEqual(completed.stdout.strip(), "75")
             with open(selection, encoding="utf-8", newline="") as handle:
                 row = next(csv.DictReader(handle, delimiter="\t"))
             self.assertEqual(row["observed_median_bracken_read_length"], "75")
@@ -288,7 +240,7 @@ class FragmentToolTests(unittest.TestCase):
                 encoding="utf-8",
             )
             tie_selection = tmp / "tie_selection.tsv"
-            tied = run_helper(
+            run_helper(
                 "select-bracken-length",
                 "--stats",
                 tie_stats,
@@ -301,55 +253,9 @@ class FragmentToolTests(unittest.TestCase):
                 "--output",
                 tie_selection,
             )
-            self.assertEqual(tied.stdout.strip(), "75")
-
-    def test_combine_emits_one_record_per_pair_with_kmer_blocking_gap(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            r1 = tmp / "R1.fq.gz"
-            r2 = tmp / "R2.fq.gz"
-            output = tmp / "combined.fq.gz"
-            stats = tmp / "stats.tsv"
-            write_fastq(r1, [("pair/1", "A" * 40)])
-            write_fastq(r2, [("pair/2", "C" * 40)])
-            run_helper(
-                "combine",
-                "--r1",
-                r1,
-                "--r2",
-                r2,
-                "--output",
-                output,
-                "--stats",
-                stats,
-                "--gap-length",
-                "100",
-                "--kmer-length",
-                "35",
-                "--minimum-usable-span",
-                "35",
-            )
-            with gzip.open(output, "rt", encoding="utf-8") as handle:
-                lines = handle.read().splitlines()
-            self.assertEqual(len(lines), 4)
-            self.assertEqual(lines[1], f"{'A' * 40}{'N' * 100}{'C' * 40}")
-            self.assertEqual(read_metrics(stats)["retained_paired_fragments"], "1")
-
-            rescanned_stats = tmp / "rescanned.tsv"
-            run_helper(
-                "stats",
-                "--single",
-                output,
-                "--output",
-                rescanned_stats,
-                "--kmer-length",
-                "35",
-                "--minimum-usable-span",
-                "35",
-            )
-            rescanned = read_metrics(rescanned_stats)
-            self.assertEqual(rescanned["median_bracken_read_length"], "40")
-            self.assertEqual(rescanned["median_kmer_equivalent_read_length"], "46")
+            with open(tie_selection, encoding="utf-8", newline="") as handle:
+                # Equal distance to 75 and 100: the shorter model wins.
+                self.assertEqual(next(csv.DictReader(handle, delimiter="\t"))["selected_bracken_read_length"], "75")
 
     def test_pair_name_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

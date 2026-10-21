@@ -62,9 +62,8 @@ def main():
     with open(REF_DIR / "chm13_tiny.fa", "w") as handle:
         handle.write(">chm13_tiny\n")
         handle.write(HOST + "\n")
-    # Stub mode never reads these indexes, but production preflight deliberately
-    # requires a complete BWA bundle before any sample task is scheduled.
-    for suffix in (".amb", ".ann", ".bwt", ".pac", ".sa", ".fai"):
+    # Stub mode never reads the index, but the workflow checks it exists before it starts.
+    for suffix in (".amb", ".ann", ".bwt", ".pac", ".sa"):
         (REF_DIR / f"chm13_tiny.fa{suffix}").write_text("mstflow stub index\n")
 
     KRAKEN_DIR.mkdir(parents=True, exist_ok=True)

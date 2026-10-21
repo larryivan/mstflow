@@ -153,7 +153,7 @@ class BrackenModuleContractTests(unittest.TestCase):
                 workflow {{
                     selection_input = Channel.of(
                         tuple(
-                            [id: 'sample', bracken_read_len: 'auto'],
+                            [id: 'sample'],
                             file({groovy_string(stats)}),
                             file({groovy_string(database)})
                         )

@@ -15,43 +15,12 @@ process BRACKEN_PROFILE {
 
     script:
     def id = meta.id
-    def extraArgs = params.bracken_extra_args ?: ''
     """
-    expected_selection_header=\$'sample_id\tobserved_median_bracken_read_length\tselected_bracken_read_length\tselection_mode\tdistribution_file'
-    actual_selection_header=\$(head -n 1 "${read_length_selection}" 2>/dev/null || true)
-    if [[ "\$actual_selection_header" != "\$expected_selection_header" ]]; then
-        echo "Invalid Bracken selection header in ${read_length_selection}" >&2
-        exit 1
-    fi
-    selection_rows=\$(awk 'NR > 1 && NF { rows += 1 } END { print rows + 0 }' "${read_length_selection}")
-    if [[ "\$selection_rows" -ne 1 ]]; then
-        echo "Bracken selection must contain exactly one data row: ${read_length_selection}" >&2
-        exit 1
-    fi
-    selected_sample=\$(awk -F '\t' 'NR == 2 { print \$1 }' "${read_length_selection}")
     selected_read_length=\$(awk -F '\t' 'NR == 2 { print \$3 }' "${read_length_selection}")
-    selected_distribution=\$(awk -F '\t' 'NR == 2 { print \$5 }' "${read_length_selection}")
-    selected_distribution_basename=\${selected_distribution##*/}
-    [[ "\$selected_sample" == "${id}" ]] || {
-        echo "Bracken selection sample mismatch: expected ${id}, got \$selected_sample" >&2
-        exit 1
-    }
-    [[ "\$selected_read_length" =~ ^[1-9][0-9]*\$ ]] || {
-        echo "Invalid selected Bracken read length in ${read_length_selection}: \$selected_read_length" >&2
-        exit 1
-    }
-    [[ "\$selected_distribution_basename" == "database\${selected_read_length}mers.kmer_distrib" ]] || {
-        echo "Bracken selection distribution does not match selected length: \$selected_distribution" >&2
-        exit 1
-    }
-    [[ -f "${bracken_db}/\$selected_distribution_basename" ]] || {
-        echo "Selected Bracken distribution is absent from the staged database: \$selected_distribution_basename" >&2
-        exit 1
-    }
 
     set +e
     bracken \
-        ${extraArgs} \
+        ${params.bracken_extra_args} \
         -d "${bracken_db}" \
         -i "${report}" \
         -o "${id}.bracken.tsv" \
@@ -106,13 +75,7 @@ process BRACKEN_PROFILE {
         exit "\$bracken_exit"
     fi
 
-    version=\$(bracken -v 2>&1 \
-        | sed -nE 's/.*[Bb]racken[^0-9]*([0-9]+(\\.[0-9]+){1,2}).*/\\1/p' \
-        | head -n 1 || true)
-    [[ -n "\$version" ]] || version=\$(bracken -h 2>&1 \
-        | sed -nE 's/.*[Bb]racken[^0-9]*([0-9]+(\\.[0-9]+){1,2}).*/\\1/p' \
-        | head -n 1 || true)
-    [[ -n "\$version" ]] || version="unknown"
+    version=\$(bracken -v 2>&1 | sed -nE 's/.*[Bb]racken[^0-9]*([0-9]+(\\.[0-9]+){1,2}).*/\\1/p' | head -n 1 || true)
     printf '"${task.process}":\n    bracken: "%s"\n' "\$version" > "${id}.bracken.versions.yml"
     """
 

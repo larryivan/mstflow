@@ -19,7 +19,7 @@ workflow PROFILE {
     reads           // tuple(meta, [reads]) after host removal
     metadata        // validated samplesheet
     database        // classifier database directory, or a .tar.gz archive
-    taxdump_nodes   // nodes.dmp for the prokaryote filter, or a placeholder
+    taxdump_nodes   // nodes.dmp for the prokaryote filter, or []
 
     main:
     def krakenUniq = params.classifier == 'krakenuniq'
@@ -40,14 +40,11 @@ workflow PROFILE {
         KRAKENUNIQ_PROFILE(classifier_input)
         reports = KRAKENUNIQ_PROFILE.out.reports
         minimizer_reports = channel.value([])
-        classifier_qc = KRAKENUNIQ_PROFILE.out.qc
     } else {
         KRAKEN2_PROFILE(classifier_input)
         reports = KRAKEN2_PROFILE.out.reports
         minimizer_reports = KRAKEN2_PROFILE.out.minimizer_reports.toSortedList { a, b -> a.name <=> b.name }
-        classifier_qc = KRAKEN2_PROFILE.out.qc.mix(KRAKEN2_PROFILE.out.minimizer_reports)
     }
-    classifier_qc = classifier_qc.mix(reports.map { _meta, report, readLength -> [report, readLength] }.flatten())
 
     if (isOn(params.run_bracken)) {
         SELECT_BRACKEN_LENGTH(reports.map { meta, _report, readLength -> tuple(meta, readLength) }.combine(db), fragmentHelper)
@@ -66,12 +63,10 @@ workflow PROFILE {
         bracken_tables = BRACKEN_PROFILE.out.tables
             .map { _meta, table, _report -> table }
             .toSortedList { a, b -> a.name <=> b.name }
-        bracken_qc = BRACKEN_PROFILE.out.tables.map { _meta, _table, report -> report }
-            .mix(SELECT_BRACKEN_LENGTH.out.selections.map { _meta, selection -> selection })
-            .mix(BRACKEN_PROFILE.out.status)
+        bracken_reports = BRACKEN_PROFILE.out.tables.map { _meta, _table, report -> report }
     } else {
         bracken_tables = channel.value([])
-        bracken_qc = channel.empty()
+        bracken_reports = channel.empty()
     }
 
     BUILD_FEATURE_TABLE(
@@ -87,9 +82,5 @@ workflow PROFILE {
     all_counts = BUILD_FEATURE_TABLE.out.raw_counts       // one row per taxon, before the taxon filter
     filtered_counts = BUILD_FEATURE_TABLE.out.counts      // after the taxon filter
     sample_qc = BUILD_FEATURE_TABLE.out.sample_qc         // per-sample classified and retained reads
-    qc = classifier_qc                                    // for MultiQC
-        .mix(bracken_qc)
-        .mix(BUILD_FEATURE_TABLE.out.qc)
-        .mix(BUILD_FEATURE_TABLE.out.sample_qc)
-        .mix(BUILD_FEATURE_TABLE.out.kmer_filter)
+    qc = reports.map { _meta, report, _readLength -> report }.mix(bracken_reports)   // Kraken-style reports, for MultiQC
 }
