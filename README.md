@@ -13,7 +13,7 @@ and source attribution with five methods, scored on your own data.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/mstflow-workflow-dark.svg">
-  <img alt="Ancient and modern libraries are trimmed on their own branches, then run side by side through host removal with BWA, Kraken2 and Bracken to a genus table, with source attribution as an optional last step." src="docs/images/mstflow-workflow-light.svg" width="100%">
+  <img alt="Ancient and modern libraries are trimmed on their own lines (AdapterRemoval, fastp) and run side by side through host removal with BWA. The pair then splits into two branches, Kraken2 then Bracken, or KrakenUniq instead of both, and rejoins for the k-mer and taxon filters and one count table. An optional source attribution line fans out into five methods, SourceTracker2, FEAST, FastST, SourceID-NMF and SourcePredict, and gathers again for their comparison, cross-validated by study. A QC line runs underneath: FastQC before and after, the sample summary and MultiQC." src="docs/images/mstflow-workflow-light.svg" width="100%">
 </picture>
 
 ## Why MSTFlow
