@@ -7,7 +7,7 @@ include { SOURCEID_NMF } from '../modules/sourceid_nmf'
 include { PREPARE_SOURCEPREDICT_TAXONOMY; SOURCEPREDICT } from '../modules/sourcepredict'
 include { SUMMARIZE_ATTRIBUTION } from '../modules/summarize_attribution'
 include { EVALUATE_ATTRIBUTION } from '../modules/evaluate_attribution'
-include { binScript; isLocal; isOn; splitList; taxdumpFile } from './utils'
+include { binScript; isOn; splitList; taxdumpFile; taxdumpPath } from './utils'
 
 /*
  * Estimate where each sink's microbes came from with every requested method.
@@ -75,7 +75,7 @@ workflow ATTRIBUTION {
         def purpose = 'SourcePredict, which needs the NCBI taxonomy'
         PREPARE_SOURCEPREDICT_TAXONOMY(
             ['nodes.dmp', 'names.dmp'].collect { name -> taxdumpFile(params.taxdump, name, purpose) } +
-                optionalTaxdumpFile(params.taxdump, 'merged.dmp')
+                [taxdumpPath(params.taxdump, 'merged.dmp')].findAll { merged -> merged.exists() }
         )
         SOURCEPREDICT(analyses, PREPARE_SOURCEPREDICT_TAXONOMY.out.database.collect(), binScript('run_sourcepredict.py'),
                       attributionModule)
@@ -103,13 +103,6 @@ workflow ATTRIBUTION {
             attributionModule
         )
     }
-
-    emit:
-    qc = PREPARE_ATTRIBUTION_INPUTS.out.summary
-        .mix(PREPARE_ATTRIBUTION_INPUTS.out.exclusions)
-        .mix(PREPARE_ATTRIBUTION_INPUTS.out.sample_qc)
-    assignments = SUMMARIZE_ATTRIBUTION.out.assignments
-    comparison = SUMMARIZE_ATTRIBUTION.out.comparison
 }
 
 
@@ -119,11 +112,4 @@ def sourceidNmfCode(location) {
     def names = ['SourceID-NMF.py', 'admm.py', 'data_clustering.py', 'data_estimation.py', 'data_initialization.py']
     def base = location.toString().replaceAll('/+$', '')
     return names.collect { name -> file("${base}/${name}", checkIfExists: true) }
-}
-
-
-def optionalTaxdumpFile(value, name) {
-    def taxdump = file(value)
-    def candidate = isLocal(taxdump) && java.nio.file.Files.isDirectory(taxdump) ? taxdump.resolve(name) : taxdump.resolveSibling(name)
-    return candidate.exists() ? [candidate] : []
 }

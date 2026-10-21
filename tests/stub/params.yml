@@ -1,50 +1,18 @@
+# Overrides -profile test with the generated stub data (tests/stub/make_stub_data.py).
 input: tests/stub/data/metadata.tsv
 outdir: results/stub
-
-remove_host: true
 host_fasta: tests/stub/data/refs/chm13_tiny.fa
-host_remove_max_forks: 4
-host_min_mapq: 0
-default_host_group: human
-require_explicit_host_for_nondefault: true
+kraken2_db: tests/stub/data/kraken2_stub_db
+taxdump: tests/stub/data/taxonomy
+sourceid_nmf_code: tests/stub/data/sourceid_nmf
+taxon_filter: none
 require_explicit_host_action: true
 
-run_kraken2: true
-kraken2_db: tests/stub/data/kraken2_stub_db
-kraken2_kmer_len: 35
-kraken2_min_read_len: 35
-kraken2_confidence: 0.05
-kraken2_minimum_hit_groups: 2
-kraken2_use_names: true
-kraken2_report_minimizer_data: true
-kraken2_save_read_classifications: false
-
-run_bracken: true
-bracken_db: tests/stub/data/kraken2_stub_db
-bracken_rank: G
-bracken_read_len: auto
 bracken_threshold: 1
-
-taxon_filter: none
-drop_taxids: "0,1"
-
-attribution_methods: "sourcetracker2,feast,fastst,sourceid_nmf,sourcepredict"
 attribution_label: tiny_stub
-attribution_aggregate_by: unit_id
 attribution_taxon_scope: all
-attribution_exclude_panel_roles: "control,holdout"
 attribution_min_classified_fraction: 0
 attribution_min_retained_reads: 0
 attribution_min_retained_fraction: 0
-attribution_cv: true
-attribution_cv_group: sample_label
 sourcetracker2_source_rarefaction_depth: 0
 sourcetracker2_sink_rarefaction_depth: 0
-taxdump: tests/stub/data/taxonomy
-sourceid_nmf_code: tests/stub/data/sourceid_nmf
-
-multiqc_title: mstflow tiny stub
-ancient_pe_mode: collapsed_only
-fragment_pair_gap: 100
-fastq_gzip_level: 6
-publish_intermediates: false

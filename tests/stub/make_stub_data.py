@@ -43,15 +43,15 @@ def write_metadata(path):
     ]
     with open(path, "w") as handle:
         handle.write(
-            "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\tpreprocess_mode\thost_action\thost_group\thost_ref\t"
-            "source_sink\tmodel_source_env\tsample_label\tproject\trun\n"
+            "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\thost_action\thost_group\thost_ref\t"
+            "source_sink\tmodel_source_env\tproject\n"
         )
         for sample_id, fastq_1, fastq_2, layout, age_group, source_sink, env, host_action in rows:
-            host_group = "human" if host_action == "remove" else "none"
+            host_group = "human" if host_action == "remove" else "NA"
             host_ref = str(REF_DIR / "chm13_tiny.fa") if host_action == "remove" else "NA"
             handle.write(
-                f"{sample_id}\t{fastq_1}\t{fastq_2}\t{layout}\t{age_group}\tauto\t{host_action}\t{host_group}\t{host_ref}\t"
-                f"{source_sink}\t{env}\t{sample_id}\ttiny\t{sample_id}\n"
+                f"{sample_id}\t{fastq_1}\t{fastq_2}\t{layout}\t{age_group}\t{host_action}\t{host_group}\t{host_ref}\t"
+                f"{source_sink}\t{env}\t{sample_id}\n"
             )
 
 

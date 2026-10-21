@@ -11,7 +11,7 @@ A tab-separated file with one row per sequencing library, for example:
 | gut_01 | reads/gut_01_R1.fastq.gz | reads/gut_01_R2.fastq.gz | modern |
 
 The [test samplesheet](https://github.com/larryivan/mstflow/releases/download/test-data-v1/samplesheet.tsv)
-is a working example, with SourceTracker2 columns and reads named relative to it.
+is a working example, with the source attribution columns and reads named relative to it.
 
 | Column | Required | Meaning |
 |---|---|---|
@@ -23,7 +23,7 @@ is a working example, with SourceTracker2 columns and reads named relative to it
 | `host_action` | no | `remove` (default) or `skip`, for libraries with no host DNA such as sediment |
 | `host_ref` | no | A different indexed host FASTA for this library; empty or `default` uses `--host_fasta` |
 | `host_group` | no | Name of the host for this library, such as `pig`; needs its own `host_ref` |
-| `unit_id` | no | Groups several runs of one biological sample for SourceTracker2 |
+| `unit_id` | no | Groups several runs of one biological sample for source attribution |
 | `source_sink`, `model_source_env` | no | Needed only for source attribution; see below |
 | `project` | no | The study a library comes from; source attribution's cross-validation holds out one study at a time |
 
@@ -144,9 +144,9 @@ process {
 and add `-c site.config` to the command. Accounts, queues, scratch paths and other
 site settings belong in this file, not in the workflow.
 
-If compute nodes cannot download container images, convert each image listed in
-[containers.lock.tsv](../containers.lock.tsv) to a `.sif` file once, and point the
-matching `container_*` parameters at those files in the same config:
+If compute nodes cannot download container images, convert each `container_*` image
+named in [nextflow.config](../nextflow.config) to a `.sif` file once, and point those
+parameters at the files in the same config:
 
 ```groovy
 params.container_kraken2 = '/shared/containers/kraken2-2.1.6.sif'
@@ -173,7 +173,7 @@ their licences, how calls are made and how cross-validation scores them.
 
 ## Reproducibility
 
-Every run writes the validated samplesheet, the Nextflow report, timeline and trace,
-and the version of each tool to `results/pipeline_info` and next to each output.
+Every run writes the validated samplesheet and the Nextflow report, timeline and trace
+to `results/pipeline_info`, and each tool's version next to its output.
 Together with a pinned release (`-r`) and the database snapshot, that is everything
 needed to rerun an analysis exactly.

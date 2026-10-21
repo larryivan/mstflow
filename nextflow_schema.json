@@ -186,7 +186,7 @@
             "properties": {
                 "run_kraken2": {
                     "type": "boolean",
-                    "description": "Classify reads with Kraken2.",
+                    "description": "Classify reads (with Kraken2 or KrakenUniq); false stops after preprocessing.",
                     "default": true,
                     "hidden": true
                 },
@@ -238,7 +238,7 @@
                     "description": "Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all).",
                     "default": 0,
                     "minimum": 0,
-                    "help_text": "False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_minimizer_filter.tsv`. See docs/usage.md."
+                    "help_text": "False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_kmer_filter.tsv`. See docs/usage.md."
                 },
                 "kraken2_save_read_classifications": {
                     "type": "boolean",
@@ -288,13 +288,6 @@
                     "description": "Re-estimate abundances at --bracken_rank with Bracken; without it the tables hold the classifier's own clade counts.",
                     "default": true,
                     "help_text": "Bracken moves reads the classifier left at higher ranks down to --bracken_rank. It needs the database's database<N>mers.kmer_distrib files, which prebuilt Kraken2 indexes ship; for KrakenUniq, build them with `bracken-build -y krakenuniq -k 31`."
-                },
-                "bracken_db": {
-                    "type": "string",
-                    "description": "Bracken database directory; defaults to `kraken2_db`.",
-                    "format": "directory-path",
-                    "exists": true,
-                    "hidden": true
                 },
                 "bracken_rank": {
                     "type": "string",
@@ -442,33 +435,6 @@
                     "default": 1,
                     "minimum": 0,
                     "maximum": 2147483647
-                },
-                "attribution_exclude_panel_roles": {
-                    "type": "string",
-                    "description": "Leave out rows with these `panel_role` values (comma-separated).",
-                    "default": "control,holdout",
-                    "pattern": "^[^'\\n\\r]*$"
-                },
-                "attribution_include_panel_roles": {
-                    "type": "string",
-                    "description": "Only use rows with these `panel_role` values (comma-separated).",
-                    "default": "",
-                    "pattern": "^[^'\\n\\r]*$",
-                    "hidden": true
-                },
-                "attribution_exclude_source_envs": {
-                    "type": "string",
-                    "description": "Leave out these source environments (comma-separated).",
-                    "default": "",
-                    "pattern": "^[^'\\n\\r]*$",
-                    "hidden": true
-                },
-                "attribution_exclude_source_classes": {
-                    "type": "string",
-                    "description": "Leave out these source classes (comma-separated).",
-                    "default": "",
-                    "pattern": "^[^'\\n\\r]*$",
-                    "hidden": true
                 },
                 "attribution_min_classified_fraction": {
                     "type": "number",

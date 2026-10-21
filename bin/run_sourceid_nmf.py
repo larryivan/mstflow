@@ -36,11 +36,6 @@ def main():
     taxa, _, counts = read_counts(args.counts)
     envs, sinks = roles(units)
     pooled = pooled_sources(units, taxa, counts)
-    # SourceID-NMF drops all-zero sources without dropping their labels, which would
-    # shift every later column; the pooled sources are never empty, but say so loudly.
-    empty = [env for env, column in pooled.items() if not any(column)]
-    if empty:
-        raise SystemExit("pooled sources with no counts: " + ", ".join(empty))
 
     # Neutral column names keep environment names with spaces or symbols out of
     # SourceID-NMF's space-separated output.

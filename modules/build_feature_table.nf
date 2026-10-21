@@ -16,7 +16,7 @@ process BUILD_FEATURE_TABLE {
     path bracken_files, stageAs: 'bracken/*'          // empty without Bracken
     path reports, stageAs: 'reports/*'                // Kraken2 or KrakenUniq reports
     path minimizer_reports, stageAs: 'minimizers/*'   // Kraken2 only
-    path taxdump_nodes
+    path taxdump_nodes                                // nodes.dmp for the prokaryote filter, else empty
     path build_feature_table_script
 
     output:

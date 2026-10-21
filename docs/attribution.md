@@ -18,7 +18,8 @@ their accuracy on held-out sources, as part of the result.
 | `model_source_env` | For sources, the environment, such as `oral`, `gut`, `soil`, `laboratory` |
 | `project` | The study a library comes from; cross-validation holds out one study at a time |
 | `unit_id` | Optional: runs of one biological sample, merged into one unit |
-| `panel_role` | Optional: rows with `control` or `holdout` are left out (`--attribution_exclude_panel_roles`) |
+
+A library with `source_sink` left empty is profiled but left out of attribution.
 
 Sources of one environment are pooled for the mixture models, as SourceTracker2 does,
 so each environment needs at least one source that passes the depth checks.
@@ -133,7 +134,7 @@ instead (`--sourcepredict_normalization`).
 
 | Path | Contents |
 |---|---|
-| `inputs/` | the count table and map every method read, and which samples were left out and why |
+| `inputs/` | the count table and map every method read, and in `attribution_sample_qc.tsv` which samples were left out and why |
 | `<method>/` | each method's results in the shared table format |
 | `proportions.tsv` | every estimate: method, sink, source, estimate, uncertainty, quantity |
 | `assignments.tsv` | per method and sink: the call, the leading sources and the unknown share |

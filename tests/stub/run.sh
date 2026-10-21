@@ -6,7 +6,6 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 python3 tests/stub/make_stub_data.py
-mkdir -p tests/stub/data/kraken2_stub_db
 
 nextflow run . \
     -profile test \

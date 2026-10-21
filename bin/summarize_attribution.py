@@ -50,9 +50,7 @@ def plot(path, grouped, decisions, methods, sinks, sources, title):
     for axis, method in zip(axes[0], methods):
         quantity = next(entry["quantity"] for (_, m, _), entry in grouped.items() if m == method)
         for row, sink in enumerate(sinks):
-            entry = grouped.get(("main", method, sink))
-            if entry is None:
-                continue
+            entry = grouped[("main", method, sink)]
             left = 0.0
             for source in sources:
                 value = entry["estimates"].get(source, 0.0)

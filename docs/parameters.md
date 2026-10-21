@@ -69,7 +69,7 @@ hidden from `--help` unless `--showHidden` is given.
 | `--kraken2_minimum_hit_groups` | Kraken2 minimum hit groups. | integer | `2` |
 | `--kraken2_kmer_len` | k-mer length the database was built with. | integer | `35` |
 | `--kraken2_min_read_len` | Shortest read submitted to Kraken2; must be at least `kraken2_kmer_len`. | integer | `35` |
-| `--kraken2_min_distinct_minimizers` | Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all). False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_minimizer_filter.tsv`. See docs/usage.md. | integer | `0` |
+| `--kraken2_min_distinct_minimizers` | Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all). False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_kmer_filter.tsv`. See docs/usage.md. | integer | `0` |
 | `--kraken2_save_read_classifications` | Keep per-read Kraken2 classifications (large). | boolean | `false` |
 | `--kraken2_cpus` | CPUs per Kraken2 task. | integer | `16` |
 | `--kraken2_memory` | Memory per Kraken2 task; must hold the whole database. | string | `160 GB` |
@@ -80,7 +80,7 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--run_kraken2` | Classify reads with Kraken2. | boolean | `true` |
+| `--run_kraken2` | Classify reads (with Kraken2 or KrakenUniq); false stops after preprocessing. | boolean | `true` |
 | `--kraken2_use_names` | Include taxon names in Kraken2 output. | boolean | `true` |
 | `--kraken2_report_minimizer_data` | Include minimizer counts in the Kraken2 report. | boolean | `true` |
 | `--kraken2_extra_args` | Extra arguments passed to Kraken2. | string |  |
@@ -100,7 +100,6 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--bracken_db` | Bracken database directory; defaults to `kraken2_db`. | string |  |
 | `--bracken_extra_args` | Extra arguments passed to Bracken. | string |  |
 
 </details>
@@ -127,15 +126,11 @@ hidden from `--help` unless `--showHidden` is given.
 | `--attribution_min_top_known` | Abstain when the leading known source is below this value. | number | `0.5` |
 | `--attribution_min_margin` | Abstain when the two leading known sources are closer than this. | number | `0.05` |
 | `--attribution_seed` | Random seed for every method. | integer | `1` |
-| `--attribution_exclude_panel_roles` | Leave out rows with these `panel_role` values (comma-separated). | string | `control,holdout` |
 
 <details><summary>Advanced</summary>
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--attribution_include_panel_roles` | Only use rows with these `panel_role` values (comma-separated). | string |  |
-| `--attribution_exclude_source_envs` | Leave out these source environments (comma-separated). | string |  |
-| `--attribution_exclude_source_classes` | Leave out these source classes (comma-separated). | string |  |
 | `--attribution_min_classified_fraction` | Leave out libraries with a smaller Kraken2 classified fraction. | number | `0.001` |
 | `--attribution_min_retained_reads` | Leave out libraries with fewer reads after the taxon filter. | integer | `1000` |
 | `--attribution_min_retained_fraction` | Leave out libraries keeping a smaller fraction of reads after the taxon filter. | number | `0.001` |

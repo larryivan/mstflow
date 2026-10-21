@@ -1,3 +1,5 @@
+include { isOn } from '../subworkflows/utils'
+
 process VALIDATE_METADATA {
     label 'process_low'
     tag 'metadata'
@@ -14,43 +16,19 @@ process VALIDATE_METADATA {
     path "validate_metadata_versions.yml", emit: versions
 
     script:
-    def defaultHostGroup = params.get('default_host_group', 'human')
-    def requireExplicitHost = params.get('require_explicit_host_for_nondefault', false).toString().toBoolean()
-    def requireExplicitHostAction = params.get('require_explicit_host_action', false).toString().toBoolean()
-    def removeHost = params.get('remove_host', true).toString().toBoolean()
-    def requireExplicitHostArg = removeHost && requireExplicitHost ? '--require-explicit-host-for-nondefault' : ''
-    def requireExplicitHostActionArg = removeHost && requireExplicitHostAction ? '--require-explicit-host-action' : ''
-    def configuredHostFasta = params.get('host_fasta', '') ?: ''
-    def defaultHostFasta = configuredHostFasta ? file(configuredHostFasta).toString() : ''
-    def defaultHostFastaArg = removeHost ? "--default-host-fasta '${defaultHostFasta}'" : ''
+    // The host rules matter only when host reads are removed.
+    def removeHost = isOn(params.remove_host)
+    def hostArgs = [
+        removeHost && isOn(params.require_explicit_host_for_nondefault) ? '--require-explicit-host-for-nondefault' : '',
+        removeHost && isOn(params.require_explicit_host_action) ? '--require-explicit-host-action' : '',
+    ].join(' ')
     """
     python3 "${validator_script}" \\
         --input "${metadata}" \\
         --output "metadata.validated.tsv" \\
-        --skip-filesystem-checks \\
-        --default-host-group '${defaultHostGroup}' \\
-        ${requireExplicitHostArg} ${requireExplicitHostActionArg} ${defaultHostFastaArg}
+        --default-host-group '${params.default_host_group}' \\
+        ${hostArgs}
 
     printf '"${task.process}":\\n    python: "%s"\\n' "\$(python3 --version 2>&1 | sed 's/Python //')" > validate_metadata_versions.yml
-    """
-
-    stub:
-    def defaultHostGroup = params.get('default_host_group', 'human')
-    def requireExplicitHost = params.get('require_explicit_host_for_nondefault', false).toString().toBoolean()
-    def requireExplicitHostAction = params.get('require_explicit_host_action', false).toString().toBoolean()
-    def removeHost = params.get('remove_host', true).toString().toBoolean()
-    def requireExplicitHostArg = removeHost && requireExplicitHost ? '--require-explicit-host-for-nondefault' : ''
-    def requireExplicitHostActionArg = removeHost && requireExplicitHostAction ? '--require-explicit-host-action' : ''
-    def configuredHostFasta = params.get('host_fasta', '') ?: ''
-    def defaultHostFasta = configuredHostFasta ? file(configuredHostFasta).toString() : ''
-    def defaultHostFastaArg = removeHost ? "--default-host-fasta '${defaultHostFasta}'" : ''
-    """
-    python3 "${validator_script}" \\
-        --input "${metadata}" \\
-        --output "metadata.validated.tsv" \\
-        --skip-filesystem-checks \\
-        --default-host-group '${defaultHostGroup}' \\
-        ${requireExplicitHostArg} ${requireExplicitHostActionArg} ${defaultHostFastaArg}
-    printf '"${task.process}":\\n    stub: "true"\\n' > validate_metadata_versions.yml
     """
 }

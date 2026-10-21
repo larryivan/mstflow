@@ -124,15 +124,20 @@ def requireBrackenDistributions(directory, classifier) {
 }
 
 
+// `taxdump` is a directory holding the NCBI .dmp files, or one of those files, in
+// which case the others are looked up beside it. Either may be a URL.
+def taxdumpPath(value, name) {
+    def taxdump = file(value, checkIfExists: true)
+    def isDirectory = isLocal(taxdump) && java.nio.file.Files.isDirectory(taxdump)
+    return isDirectory ? taxdump.resolve(name) : (taxdump.name == name ? taxdump : taxdump.resolveSibling(name))
+}
+
+
 def taxdumpFile(value, name, purpose) {
-    // `taxdump` is a directory holding the NCBI .dmp files, or one of those files,
-    // in which case the others are looked up beside it. Either may be a URL.
     if (!value) {
         throw new IllegalArgumentException("Parameter 'taxdump' is required for ${purpose}")
     }
-    def taxdump = file(value, checkIfExists: true)
-    def isDirectory = isLocal(taxdump) && java.nio.file.Files.isDirectory(taxdump)
-    def candidate = isDirectory ? taxdump.resolve(name) : (taxdump.name == name ? taxdump : taxdump.resolveSibling(name))
+    def candidate = taxdumpPath(value, name)
     if (!candidate.exists()) {
         throw new IllegalArgumentException("taxdump has no ${name}: ${candidate.toUriString()}")
     }

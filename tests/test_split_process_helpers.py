@@ -46,7 +46,7 @@ def run_script(script, *arguments, cwd):
 
 
 class SplitProcessHelperTests(unittest.TestCase):
-    def test_metadata_container_mode_leaves_paths_for_nextflow_staging(self):
+    def test_metadata_validation_leaves_paths_for_nextflow_staging(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata = root / "metadata.tsv"
@@ -67,7 +67,6 @@ class SplitProcessHelperTests(unittest.TestCase):
                 "--default-host-group",
                 "human",
                 "--require-explicit-host-for-nondefault",
-                "--skip-filesystem-checks",
                 cwd=root,
             )
             with output.open(encoding="utf-8", newline="") as handle:

@@ -7,46 +7,18 @@ if not, why.
 """
 import argparse
 import csv
-import fnmatch
-import math
-import re
-import sys
 from collections import OrderedDict
-from decimal import Decimal, InvalidOperation
 
 
 NA_VALUES = {"", "NA", "N/A", "NONE", "NULL"}
-# A read count wider than a 128-bit integer is not physically obtainable; the
-# bound exists so an implausible magnitude fails fast instead of being expanded.
-MAX_COUNT_DIGITS = 38
-CONSISTENT_AGGREGATION_FIELDS = (
-    "source_sink",
-    "model_source_env",
-    "category",
-    "source_class",
-    "panel_role",
-    "panel_layer",
-    "validation_group",
-    "project_group",
-    "host_action",
-    "host_group",
-)
+# Runs merged into one analysis unit must agree on these.
+CONSISTENT_AGGREGATION_FIELDS = ("source_sink", "model_source_env")
 QC_FIELDS = [
-    "analysis_label",
     "input_sample_id",
     "analysis_sample_id",
     "unit_id",
     "source_sink",
     "model_source_env",
-    "source_class",
-    "panel_role",
-    "panel_layer",
-    "category",
-    "validation_group",
-    "project_group",
-    "host_action",
-    "host_group",
-    "taxon_scope",
     "kraken_classified_fraction",
     "bracken_total_reads",
     "taxon_filter_retained_reads",
@@ -69,20 +41,18 @@ def is_na(value):
     return norm(value).upper() in NA_VALUES
 
 
-def first_present(row, *columns):
-    for column in columns:
-        value = norm(row.get(column))
-        if not is_na(value):
-            return value
-    return ""
+def first_present(row, column):
+    value = norm(row.get(column))
+    return "" if is_na(value) else value
 
 
-def metadata_env(row):
-    return first_present(row, "model_source_env", "category")
-
-
-def metadata_source_class(row):
-    return first_present(row, "source_class", "class", "category")
+def read_count(value, context):
+    """A read count. The tables read here were written by earlier MSTFlow steps as
+    plain integers, so anything else means a damaged input."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise SystemExit(f"{context} is not a whole read count: {value!r}")
 
 
 def read_metadata(path):
@@ -104,49 +74,6 @@ def read_metadata(path):
     if not by_sample:
         raise SystemExit(f"metadata contains no samples: {path}")
     return fieldnames, by_sample
-
-
-def finite_nonnegative(value, context):
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        raise SystemExit(f"{context} is not numeric: {value!r}")
-    if not math.isfinite(number) or number < 0:
-        raise SystemExit(f"{context} must be finite and non-negative: {value!r}")
-    return number
-
-
-def exact_count(value, context):
-    """Parse a feature count as an exact integer.
-
-    Accepts ``8``, ``8.0``, and ``8e0``; rejects fractional, negative, NaN, and
-    infinite values. SourceTracker2 and FEAST subsample integer count vectors, so a
-    fractional cell must fail loudly instead of being silently rounded.
-    """
-    text = "" if value is None else str(value).strip()
-    try:
-        number = Decimal(text)
-    except (InvalidOperation, ValueError):
-        raise SystemExit(f"{context} is not numeric: {value!r}")
-    if not number.is_finite() or number < 0:
-        raise SystemExit(f"{context} must be finite and non-negative: {value!r}")
-    # Bound the magnitude before int() materialises the digits. Decimal treats
-    # a token such as "1e999999999" as finite, and expanding it would allocate a
-    # billion-digit integer inside a non-interruptible C call; the previous
-    # float-based parser collapsed it to inf and rejected it cleanly.
-    if number.adjusted() >= MAX_COUNT_DIGITS:
-        raise SystemExit(
-            f"{context} needs more than {MAX_COUNT_DIGITS} digits "
-            f"and cannot be a read count: {value!r}"
-        )
-    if number != number.to_integral_value():
-        raise SystemExit(f"{context} must be a whole read count: {value!r}")
-    return int(number)
-
-
-def format_count(value):
-    """Render a count exactly, with no float rounding or exponent notation."""
-    return "NA" if value is None else str(int(value))
 
 
 def read_counts(path):
@@ -183,9 +110,7 @@ def read_counts(path):
                 raise SystemExit(f"{path}:{line_no}: duplicate feature ID '{feature}'")
             features.append(feature)
             matrix[feature] = {
-                sample: exact_count(
-                    value, f"{path}:{line_no}: feature '{feature}', sample '{sample}'"
-                )
+                sample: read_count(value, f"{path}:{line_no}: feature '{feature}', sample '{sample}'")
                 for sample, value in zip(samples, row[1:])
             }
     return samples, features, matrix
@@ -199,10 +124,8 @@ def read_feature_sample_qc(path):
             "sample_id",
             "kraken_total_reads",
             "kraken_classified_reads",
-            "kraken_classified_fraction",
             "bracken_total_reads",
             "taxon_filter_retained_reads",
-            "taxon_filter_retained_fraction",
         }
         missing = sorted(required.difference(fields))
         if missing:
@@ -219,57 +142,38 @@ def read_feature_sample_qc(path):
     return by_sample
 
 
-def optional_qc_number(row, field, integral=False):
-    value = norm(row.get(field))
-    if is_na(value):
+def complete_sum(rows, field):
+    """The sum of an integer QC field over the runs of a unit, or None if any run lacks it."""
+    values = [norm(row.get(field)) for row in rows]
+    if any(is_na(value) for value in values):
         return None
-    context = f"feature QC field {field} for sample '{norm(row.get('sample_id')) or '?'}'"
-    return exact_count(value, context) if integral else finite_nonnegative(value, context)
+    return sum(read_count(value, f"feature QC field {field} for sample '{row['sample_id']}'")
+               for row, value in zip(rows, values))
 
 
-def complete_sum(rows, field, integral=False):
-    values = [optional_qc_number(row, field, integral) for row in rows]
-    return None if any(value is None for value in values) else sum(values)
+def ratio(numerator, denominator):
+    return numerator / denominator if numerator is not None and denominator else None
 
 
 def aggregate_feature_qc(members, feature_qc):
     rows = [feature_qc[sample] for sample in members]
-    # Read counts stay exact integers; only the derived fractions are floats.
-    kraken_total = complete_sum(rows, "kraken_total_reads", integral=True)
-    kraken_classified = complete_sum(rows, "kraken_classified_reads", integral=True)
-    bracken_total = complete_sum(rows, "bracken_total_reads", integral=True)
-    retained_reads = complete_sum(rows, "taxon_filter_retained_reads", integral=True)
-    classified_fraction = (
-        kraken_classified / kraken_total
-        if kraken_classified is not None and kraken_total is not None and kraken_total > 0
-        else None
-    )
-    retained_fraction = (
-        retained_reads / bracken_total
-        if retained_reads is not None and bracken_total is not None and bracken_total > 0
-        else None
-    )
+    kraken_total = complete_sum(rows, "kraken_total_reads")
+    kraken_classified = complete_sum(rows, "kraken_classified_reads")
+    bracken_total = complete_sum(rows, "bracken_total_reads")
+    retained_reads = complete_sum(rows, "taxon_filter_retained_reads")
     return {
-        "kraken_total_reads": kraken_total,
-        "kraken_classified_reads": kraken_classified,
-        "kraken_classified_fraction": classified_fraction,
+        "kraken_classified_fraction": ratio(kraken_classified, kraken_total),
         "bracken_total_reads": bracken_total,
         "taxon_filter_retained_reads": retained_reads,
-        "taxon_filter_retained_fraction": retained_fraction,
+        "taxon_filter_retained_fraction": ratio(retained_reads, bracken_total),
     }
 
 
-def quality_exclusion_reason(
-    row,
-    taxon_scope,
-    min_classified,
-    min_retained_reads,
-    min_retained_fraction,
-):
-    classified = optional_qc_number(row, "kraken_classified_fraction")
-    bracken_reads = optional_qc_number(row, "bracken_total_reads")
-    retained_reads = optional_qc_number(row, "taxon_filter_retained_reads")
-    retained_fraction = optional_qc_number(row, "taxon_filter_retained_fraction")
+def quality_exclusion_reason(qc, taxon_scope, min_classified, min_retained_reads, min_retained_fraction):
+    classified = qc["kraken_classified_fraction"]
+    bracken_reads = qc["bracken_total_reads"]
+    retained_reads = qc["taxon_filter_retained_reads"]
+    retained_fraction = qc["taxon_filter_retained_fraction"]
     if classified is None:
         return "missing_kraken_classified_fraction"
     if bracken_reads is None:
@@ -309,81 +213,9 @@ def require_one_to_one(metadata_samples, count_samples):
         raise SystemExit("; ".join(problems))
 
 
-def parse_patterns(values):
-    patterns = []
-    for value in values or []:
-        for item in re.split(r"[,;]", value):
-            item = item.strip()
-            if item:
-                patterns.append(item)
-    return patterns
-
-
-def matches_pattern(value, patterns):
-    folded = norm(value).casefold()
-    return any(fnmatch.fnmatchcase(folded, pattern.casefold()) for pattern in patterns)
-
-
-def panel_role_excluded(value, excluded_patterns):
-    role = norm(value).casefold()
-    tokens = {token for token in re.split(r"[^a-z0-9]+", role) if token}
-    for pattern in excluded_patterns:
-        folded = pattern.casefold()
-        if fnmatch.fnmatchcase(role, folded) or folded in tokens:
-            return True
-    return False
-
-
-def sample_total(sample, features, matrix):
-    return sum(matrix[feature][sample] for feature in features)
-
-
-def initial_exclusion_reason(
-    row,
-    include_panel_roles,
-    exclude_panel_roles,
-    exclude_source_envs,
-    exclude_source_classes,
-):
-    panel_role = first_present(row, "panel_role")
-    if panel_role_excluded(panel_role, exclude_panel_roles):
-        return f"panel_role_excluded:{panel_role or 'NA'}"
-    if include_panel_roles and not matches_pattern(panel_role, include_panel_roles):
-        return f"panel_role_not_included:{panel_role or 'NA'}"
-
-    source_sink = norm(row.get("source_sink")).lower()
-    if is_na(source_sink) or source_sink not in {"source", "sink"}:
-        return "source_sink_not_selected"
-    source_env = metadata_env(row)
-    source_class = metadata_source_class(row)
-    if source_sink == "source" and is_na(source_env):
-        return "missing_source_environment"
-    if source_sink == "source" and matches_pattern(source_env, exclude_source_envs):
-        return f"source_environment_excluded:{source_env}"
-    if source_sink == "source" and matches_pattern(source_class, exclude_source_classes):
-        return f"source_class_excluded:{source_class}"
-    return ""
-
-
-def canonical_group_value(row, field):
-    if field == "model_source_env":
-        return metadata_env(row)
-    if field == "source_class":
-        return metadata_source_class(row)
-    if field == "host_group":
-        value = norm(row.get(field))
-        return "none" if value.casefold() == "none" else first_present(row, field)
-    return first_present(row, field)
-
-
 def check_group_consistency(group_id, members, metadata):
     for field in CONSISTENT_AGGREGATION_FIELDS:
-        values = {
-            canonical_group_value(metadata[sample], field)
-            if not is_na(canonical_group_value(metadata[sample], field))
-            else "<MISSING>"
-            for sample in members
-        }
+        values = {first_present(metadata[sample], field) or "<MISSING>" for sample in members}
         if len(values) > 1:
             raise SystemExit(
                 f"aggregation group '{group_id}' has conflicting {field}: {', '.join(sorted(values))}"
@@ -393,198 +225,72 @@ def check_group_consistency(group_id, members, metadata):
 def collapse_values(rows, field):
     values = []
     for row in rows:
-        value = norm(row.get(field))
-        is_explicit_no_host = field == "host_group" and value.casefold() == "none"
-        if (is_explicit_no_host or not is_na(value)) and value not in values:
+        value = first_present(row, field)
+        if value and value not in values:
             values.append(value)
-    return "NA" if not values else values[0] if len(values) == 1 else ";".join(values)
+    return ";".join(values) or "NA"
 
 
-def aggregate_metadata(group_id, members, metadata, metadata_fields, aggregate_by):
-    rows = [metadata[sample] for sample in members]
-    result = {field: collapse_values(rows, field) for field in metadata_fields}
-    result["sample_id"] = group_id
-    if aggregate_by in result:
-        result[aggregate_by] = group_id
-    result["source_sink"] = norm(rows[0].get("source_sink")).lower()
-    result["model_source_env"] = metadata_env(rows[0]) or "NA"
-    result["source_class"] = metadata_source_class(rows[0]) or "NA"
-    result["unit_id"] = (
-        group_id if aggregate_by == "unit_id" else first_present(rows[0], "unit_id") or group_id
-    )
-    return result
-
-
-def format_number(value):
-    return "NA" if value is None else f"{value:.12g}"
-
-
-def qc_value(feature_qc, field, count=False):
-    """Render one aggregated QC field, mapping undefined values to NA.
-
-    Values arriving as strings are already normalised by the upstream sample-QC
-    writer and are passed through unchanged; only aggregated numbers computed
-    here are formatted. Counts are rendered exactly, never in exponent form.
-    """
-    value = feature_qc.get(field)
+def format_number(value, count=False):
+    """NA for an undefined value, such as a fraction of zero reads; counts exactly."""
     if value is None:
         return "NA"
-    if isinstance(value, str):
-        return value
-    return format_count(value) if count else format_number(value)
-
-
-def make_qc_row(
-    analysis_label,
-    sample,
-    analysis_sample,
-    row,
-    input_total,
-    analysis_total,
-    required_depth,
-    members,
-    included,
-    reason,
-    feature_qc,
-    taxon_scope,
-):
-    return {
-        "analysis_label": analysis_label,
-        "input_sample_id": sample,
-        "analysis_sample_id": analysis_sample or "NA",
-        "unit_id": first_present(row, "unit_id") or sample,
-        "source_sink": first_present(row, "source_sink") or "NA",
-        "model_source_env": metadata_env(row) or "NA",
-        "source_class": metadata_source_class(row) or "NA",
-        "panel_role": first_present(row, "panel_role") or "NA",
-        "panel_layer": first_present(row, "panel_layer", "layer") or "NA",
-        "category": first_present(row, "category") or "NA",
-        "validation_group": first_present(row, "validation_group") or "NA",
-        "project_group": first_present(row, "project_group") or "NA",
-        "host_action": first_present(row, "host_action") or "NA",
-        "host_group": canonical_group_value(row, "host_group") or "NA",
-        "taxon_scope": taxon_scope,
-        # Aggregated QC is undefined (None) whenever a denominator is zero, for
-        # example a preserved zero-estimate Bracken sample. Report that as NA
-        # rather than letting csv write an indistinguishable empty cell.
-        "kraken_classified_fraction": qc_value(feature_qc, "kraken_classified_fraction"),
-        "bracken_total_reads": qc_value(feature_qc, "bracken_total_reads", count=True),
-        "taxon_filter_retained_reads": qc_value(
-            feature_qc, "taxon_filter_retained_reads", count=True
-        ),
-        "taxon_filter_retained_fraction": qc_value(feature_qc, "taxon_filter_retained_fraction"),
-        "input_total_count": format_count(input_total),
-        "analysis_total_count": format_count(analysis_total),
-        "required_min_count": required_depth,
-        "aggregation_n": len(members) if members else 0,
-        "aggregation_members": ",".join(members) if members else "NA",
-        "included": str(bool(included)).lower(),
-        "exclusion_reason": reason or "NA",
-    }
-
-
-def write_qc_rows(path, rows):
-    if not path:
-        return
-    with open(path, "w", newline="") as handle:
-        writer = csv.DictWriter(handle, delimiter="\t", fieldnames=QC_FIELDS, lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(rows)
+    return str(value) if count else f"{value:.12g}"
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Select, aggregate, depth-check, and document source attribution inputs."
-    )
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--counts", required=True)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--feature-sample-qc", required=True)
     parser.add_argument("--output-counts", required=True)
     parser.add_argument("--output-map", required=True)
     parser.add_argument("--summary", required=True)
-    parser.add_argument("--exclusions")
-    parser.add_argument("--sample-qc")
-    parser.add_argument("--aggregate-by", default="sample_id")
+    parser.add_argument("--sample-qc", required=True)
+    parser.add_argument("--aggregate-by", choices=["sample_id", "unit_id"], default="sample_id")
     parser.add_argument("--min-source-count", type=int, default=0,
                         help="Exclude source units with fewer counts, e.g. below the SourceTracker2 rarefaction depth.")
     parser.add_argument("--min-sink-count", type=int, default=0,
                         help="Exclude sink units with fewer counts.")
-    parser.add_argument("--include-panel-role", action="append", default=[])
-    parser.add_argument("--exclude-panel-role", action="append", default=[])
-    parser.add_argument("--exclude-source-env", "--exclude-source-envs", action="append", default=[])
-    parser.add_argument("--exclude-source-class", "--exclude-source-classes", action="append", default=[])
-    parser.add_argument("--analysis-label", default="default")
     parser.add_argument("--taxon-scope", choices=["all", "filtered"], default="filtered")
     parser.add_argument("--min-kraken-classified-fraction", type=float, default=0.001)
     parser.add_argument("--min-taxon-filter-retained-reads", type=float, default=1000.0)
     parser.add_argument("--min-taxon-filter-retained-fraction", type=float, default=0.001)
     args = parser.parse_args()
 
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.analysis_label):
-        raise SystemExit(
-            "--analysis-label must be filesystem-safe: letters/numbers followed by letters, "
-            "numbers, dot, underscore, or hyphen"
-        )
-    if args.min_source_count < 0 or args.min_sink_count < 0:
-        raise SystemExit("minimum counts must be non-negative")
-    if not 0 <= args.min_kraken_classified_fraction <= 1:
-        raise SystemExit("--min-kraken-classified-fraction must be between 0 and 1")
-    if args.min_taxon_filter_retained_reads < 0:
-        raise SystemExit("--min-taxon-filter-retained-reads must be non-negative")
-    if not 0 <= args.min_taxon_filter_retained_fraction <= 1:
-        raise SystemExit("--min-taxon-filter-retained-fraction must be between 0 and 1")
-
     metadata_fields, metadata = read_metadata(args.metadata)
     samples, features, matrix = read_counts(args.counts)
     require_one_to_one(metadata, samples)
     feature_qc = read_feature_sample_qc(args.feature_sample_qc)
     require_one_to_one(feature_qc, samples)
-    if args.aggregate_by != "sample_id" and args.aggregate_by not in metadata_fields:
+    if args.aggregate_by not in metadata_fields:
         raise SystemExit(f"--aggregate-by column is absent from metadata: {args.aggregate_by}")
 
-    include_panel_roles = parse_patterns(args.include_panel_role)
-    exclude_panel_roles = sorted(parse_patterns(args.exclude_panel_role))
-    exclude_source_envs = parse_patterns(args.exclude_source_env)
-    exclude_source_classes = parse_patterns(args.exclude_source_class)
-    input_totals = {sample: sample_total(sample, features, matrix) for sample in samples}
-
-    reasons = {}
-    candidate_group = {}
+    input_totals = {sample: sum(matrix[feature][sample] for feature in features) for sample in samples}
+    group_of = {sample: norm(metadata[sample][args.aggregate_by]) for sample in samples}
     groups = OrderedDict()
     for sample in samples:
-        row = metadata[sample]
-        group_id = sample if args.aggregate_by == "sample_id" else first_present(row, args.aggregate_by)
-        if not group_id:
-            reasons[sample] = f"missing_aggregation_key:{args.aggregate_by}"
-            continue
-        candidate_group[sample] = group_id
-        groups.setdefault(group_id, []).append(sample)
+        groups.setdefault(group_of[sample], []).append(sample)
 
+    reasons = {}
     group_metadata = {}
     group_feature_qc = {}
-    group_totals = {}
     final_groups = []
     for group_id, members in groups.items():
         # Validate the complete biological unit before applying any exclusion.
         # Otherwise one conflicting or low-quality run could be removed first
         # and leave a scientifically mislabelled partial unit behind.
         check_group_consistency(group_id, members, metadata)
-        group_metadata[group_id] = aggregate_metadata(
-            group_id, members, metadata, metadata_fields, args.aggregate_by
-        )
+        rows = [metadata[sample] for sample in members]
+        group_metadata[group_id] = {field: collapse_values(rows, field) for field in metadata_fields}
+        group_metadata[group_id].update({"sample_id": group_id, args.aggregate_by: group_id})
         group_feature_qc[group_id] = aggregate_feature_qc(members, feature_qc)
         total = sum(input_totals[sample] for sample in members)
-        group_totals[group_id] = total
         role = group_metadata[group_id]["source_sink"]
         required_depth = args.min_source_count if role == "source" else args.min_sink_count
-        group_reason = initial_exclusion_reason(
-            group_metadata[group_id],
-            include_panel_roles,
-            exclude_panel_roles,
-            exclude_source_envs,
-            exclude_source_classes,
-        )
-        if not group_reason:
+        if role not in ("source", "sink"):
+            group_reason = "source_sink_not_selected"
+        else:
             group_reason = quality_exclusion_reason(
                 group_feature_qc[group_id],
                 args.taxon_scope,
@@ -648,9 +354,7 @@ def main():
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["#OTU ID", *final_groups])
         for feature in retained_features:
-            writer.writerow(
-                [feature, *[format_count(aggregated[feature][group]) for group in final_groups]]
-            )
+            writer.writerow([feature, *[aggregated[feature][group] for group in final_groups]])
 
     reserved_mapping_fields = {
         "#SampleID",
@@ -685,60 +389,45 @@ def main():
                 "aggregation_n": len(groups[group]),
                 "aggregation_members": ",".join(groups[group]),
             }
-            output.update({field: row.get(field, "NA") for field in mapping_extras})
+            output.update({field: row[field] for field in mapping_extras})
             writer.writerow(output)
 
-    qc_rows = []
-    for sample in samples:
-        group = candidate_group.get(sample)
-        members = groups.get(group, []) if group else []
-        role = norm(metadata[sample].get("source_sink")).lower()
-        required_depth = (
-            args.min_source_count if role == "source" else args.min_sink_count if role == "sink" else 0
-        )
-        included = bool(group in final_groups)
-        qc_rows.append(
-            make_qc_row(
-                args.analysis_label,
-                sample,
-                group,
-                metadata[sample],
-                input_totals[sample],
-                analysis_group_totals.get(group),
-                required_depth,
-                members,
-                included,
-                reasons.get(sample, ""),
-                group_feature_qc.get(group, feature_qc[sample]),
-                args.taxon_scope,
-            )
-        )
-    write_qc_rows(args.sample_qc, qc_rows)
-    write_qc_rows(args.exclusions, [row for row in qc_rows if row["included"] == "false"])
+    with open(args.sample_qc, "w", newline="") as handle:
+        writer = csv.DictWriter(handle, delimiter="\t", fieldnames=QC_FIELDS, lineterminator="\n")
+        writer.writeheader()
+        for sample in samples:
+            row, group = metadata[sample], group_of[sample]
+            qc, members = group_feature_qc[group], groups[group]
+            role = first_present(row, "source_sink")
+            writer.writerow({
+                "input_sample_id": sample,
+                "analysis_sample_id": group,
+                "unit_id": first_present(row, "unit_id") or sample,
+                "source_sink": role or "NA",
+                "model_source_env": first_present(row, "model_source_env") or "NA",
+                "kraken_classified_fraction": format_number(qc["kraken_classified_fraction"]),
+                "bracken_total_reads": format_number(qc["bracken_total_reads"], count=True),
+                "taxon_filter_retained_reads": format_number(qc["taxon_filter_retained_reads"], count=True),
+                "taxon_filter_retained_fraction": format_number(qc["taxon_filter_retained_fraction"]),
+                "input_total_count": input_totals[sample],
+                "analysis_total_count": format_number(analysis_group_totals.get(group), count=True),
+                "required_min_count": {"source": args.min_source_count, "sink": args.min_sink_count}.get(role, 0),
+                "aggregation_n": len(members),
+                "aggregation_members": ",".join(members),
+                "included": str(group in final_groups).lower(),
+                "exclusion_reason": reasons.get(sample, "NA"),
+            })
 
     with open(args.summary, "w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["metric", "value"])
-        writer.writerow(["analysis_label", args.analysis_label])
-        writer.writerow(["sample_completeness", "one_to_one"])
-        writer.writerow(["aggregate_by", args.aggregate_by])
-        writer.writerow(["taxon_scope", args.taxon_scope])
         writer.writerow(["input_samples", len(samples)])
         writer.writerow(["candidate_analysis_units", len(groups)])
         writer.writerow(["kept_analysis_units", len(final_groups)])
         writer.writerow(["kept_input_samples", sum(len(groups[group]) for group in final_groups)])
-        writer.writerow(["excluded_input_samples", sum(sample in reasons for sample in samples)])
+        writer.writerow(["excluded_input_samples", len(reasons)])
         writer.writerow(["source_analysis_units", len(source_groups)])
         writer.writerow(["sink_analysis_units", len(sink_groups)])
-        writer.writerow(["min_source_count", args.min_source_count])
-        writer.writerow(["min_sink_count", args.min_sink_count])
-        writer.writerow(["min_kraken_classified_fraction", args.min_kraken_classified_fraction])
-        writer.writerow(["min_taxon_filter_retained_reads", args.min_taxon_filter_retained_reads])
-        writer.writerow(["min_taxon_filter_retained_fraction", args.min_taxon_filter_retained_fraction])
-        writer.writerow(["include_panel_roles", ",".join(include_panel_roles) or "ALL_SAFE_ROLES"])
-        writer.writerow(["exclude_panel_roles", ",".join(exclude_panel_roles)])
-        writer.writerow(["exclude_source_envs", ",".join(exclude_source_envs) or "NONE"])
-        writer.writerow(["exclude_source_classes", ",".join(exclude_source_classes) or "NONE"])
         writer.writerow(["kept_analysis_unit_ids", ",".join(final_groups)])
         excluded = [sample for sample in samples if sample in reasons]
         writer.writerow(["excluded_input_sample_ids", ",".join(excluded) or "NONE"])

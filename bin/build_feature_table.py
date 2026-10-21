@@ -11,54 +11,38 @@ PROKARYOTE_ROOTS = {"2", "2157"}
 # bound exists so an implausible magnitude fails fast instead of being expanded.
 MAX_COUNT_DIGITS = 38
 ROOT_TAXIDS = {"0", "1"}
-BRACKEN_SUFFIXES = (".bracken.tsv", ".bracken.txt", ".tsv", ".txt")
-MINIMIZER_SUFFIXES = (".kraken2.minimizer.report.txt",)
 RANK_WORDS = {"D": ("superkingdom", "domain"), "P": ("phylum",), "C": ("class",), "O": ("order",),
               "F": ("family",), "G": ("genus",), "S": ("species",)}
-KRAKEN_SUFFIXES = (
-    ".krakenuniq.report.txt",
-    ".kraken2.report.txt",
-    ".bracken.report.txt",
-    ".k2.report",
-    ".report.txt",
-    ".report",
-)
 
 
-def read_metadata(path):
+def read_samples(path):
+    """The sample IDs of the samplesheet, in its order."""
     with open(path, newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        fieldnames = reader.fieldnames or []
-        if "sample_id" not in fieldnames:
+        if "sample_id" not in (reader.fieldnames or []):
             raise SystemExit(f"{path} is missing metadata column: sample_id")
         rows = list(reader)
 
-    order = []
-    by_sample = {}
+    samples = []
     for line_no, row in enumerate(rows, start=2):
         sample = (row.get("sample_id") or "").strip()
         if not sample:
             raise SystemExit(f"{path}:{line_no}: sample_id is empty")
-        if sample in by_sample:
+        if sample in samples:
             raise SystemExit(f"{path}:{line_no}: duplicate sample_id '{sample}'")
-        order.append(sample)
-        by_sample[sample] = row
-    if not order:
+        samples.append(sample)
+    if not samples:
         raise SystemExit(f"metadata contains no samples: {path}")
-    return fieldnames, order, by_sample
+    return samples
 
 
-def id_from_path(path, suffixes):
+def id_from_path(path, *suffixes):
+    """The sample ID of a per-sample file named <sample><suffix>."""
     name = Path(path).name
     for suffix in suffixes:
         if name.endswith(suffix):
             return name[: -len(suffix)]
-    return Path(path).stem
-
-
-def sample_id(path):
-    """Backward-compatible Bracken sample-ID helper."""
-    return id_from_path(path, BRACKEN_SUFFIXES)
+    raise SystemExit(f"{path}: expected a file name ending in {' or '.join(suffixes)}")
 
 
 def feature_id(taxid, name):
@@ -110,7 +94,7 @@ def format_count(value):
 
 
 def read_bracken(path):
-    sample = sample_id(path)
+    sample = id_from_path(path, ".bracken.tsv")
     counts = {}
     features = {}
     with open(path, newline="") as handle:
@@ -149,7 +133,7 @@ def read_kraken_report(path, rank="G"):
     reads, rank code, taxid, name; KrakenUniq rows, after a header, are %, reads,
     taxReads, kmers, dup, cov, taxID, rank, taxName.
     """
-    sample = id_from_path(path, KRAKEN_SUFFIXES)
+    sample = id_from_path(path, ".kraken2.report.txt", ".krakenuniq.report.txt")
     totals, percents = {}, {}
     counts, features = {}, {}
     distinct = None
@@ -208,7 +192,7 @@ def read_minimizer_report(path):
     """Distinct minimizers per taxid from a Kraken2 report written with
     --report-minimizer-data: percent, clade reads, taxon reads, minimizers, distinct
     minimizers, rank, taxid, name. The minimizer columns count the whole clade."""
-    sample = id_from_path(path, MINIMIZER_SUFFIXES)
+    sample = id_from_path(path, ".kraken2.minimizer.report.txt")
     distinct = {}
     with open(path) as handle:
         for line_no, line in enumerate(handle, start=1):
@@ -257,13 +241,9 @@ def require_one_to_one(expected, observed, label):
         raise SystemExit("; ".join(problems))
 
 
-def read_nodes(taxdump):
-    if not taxdump:
-        raise SystemExit("--taxdump is required when --taxon-filter prokaryote")
-    nodes = Path(taxdump)
-    nodes = nodes / "nodes.dmp" if nodes.is_dir() else nodes
-    if not nodes.exists():
-        raise SystemExit(f"nodes.dmp not found: {nodes}")
+def read_nodes(nodes):
+    if not nodes:
+        raise SystemExit("--taxdump nodes.dmp is required when --taxon-filter prokaryote")
     parents = {}
     with open(nodes) as handle:
         for line in handle:
@@ -349,7 +329,6 @@ def write_qc(path, samples, raw_features, filtered_features, reasons, mode):
         writer.writerow(["metric", "value"])
         writer.writerow(["taxon_filter", mode])
         writer.writerow(["samples", len(samples)])
-        writer.writerow(["sample_completeness", "one_to_one"])
         writer.writerow(["raw_features", len(raw_features)])
         writer.writerow(["filtered_features", len(filtered_features)])
         writer.writerow(["dropped_features", len(raw_features) - len(filtered_features)])
@@ -367,9 +346,7 @@ def format_value(value):
 
 def write_sample_qc(
     path,
-    metadata_fields,
     samples,
-    metadata,
     raw_features,
     filtered_features,
     counts,
@@ -378,7 +355,8 @@ def write_sample_qc(
 ):
     raw_totals = sample_totals(samples, raw_features, counts)
     filtered_totals = sample_totals(samples, filtered_features, counts)
-    metric_fields = [
+    fields = [
+        "sample_id",
         "kraken_total_reads",
         "kraken_classified_reads",
         "kraken_unclassified_reads",
@@ -391,7 +369,6 @@ def write_sample_qc(
         "filtered_nonzero_features",
         "kmer_filter_removed_reads",
     ]
-    fields = list(metadata_fields) + [field for field in metric_fields if field not in metadata_fields]
     with open(path, "w", newline="") as handle:
         writer = csv.DictWriter(handle, delimiter="\t", fieldnames=fields, lineterminator="\n")
         writer.writeheader()
@@ -401,9 +378,9 @@ def write_sample_qc(
             km = kraken_metrics.get(sample, {})
             classified = km.get("kraken_classified_reads")
             total = km.get("kraken_total_reads")
-            row = dict(metadata[sample])
-            row.update(
+            writer.writerow(
                 {
+                    "sample_id": sample,
                     "kraken_total_reads": format_count(total),
                     "kraken_classified_reads": format_count(classified),
                     "kraken_unclassified_reads": format_count(km.get("kraken_unclassified_reads")),
@@ -427,7 +404,6 @@ def write_sample_qc(
                     ),
                 }
             )
-            writer.writerow(row)
 
 
 def main():
@@ -469,7 +445,7 @@ def main():
     if not args.bracken_files and not args.kraken_reports:
         raise SystemExit("give Bracken tables, or --kraken-reports to count from the reports")
 
-    metadata_fields, samples, metadata = read_metadata(args.metadata)
+    samples = read_samples(args.metadata)
     counts = {}
     features = {}
     observed = []
@@ -547,9 +523,7 @@ def main():
     )
     write_sample_qc(
         f"{filtered_prefix}_sample_qc.tsv",
-        metadata_fields,
         samples,
-        metadata,
         raw_features,
         filtered_features,
         counts,

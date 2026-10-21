@@ -18,7 +18,6 @@ process SOURCETRACKER2 {
 
     output:
     tuple val(meta), path("${meta.analysis}.sourcetracker2.attribution.tsv"), emit: results
-    path "sourcetracker2.out", emit: raw
     path "${meta.analysis}.sourcetracker2.versions.yml", emit: versions
 
     script:
@@ -62,7 +61,6 @@ process SOURCETRACKER2 {
 
     stub:
     """
-    mkdir -p sourcetracker2.out
     python3 - <<'PY'
 from mstflow_attribution import UNKNOWN, read_map, roles, write_results
 envs, sinks = roles(read_map("${mapping}"))

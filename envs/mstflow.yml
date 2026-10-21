@@ -4,17 +4,13 @@ channels:
   - bioconda
   - nodefaults
 dependencies:
-  # Top-level versions are pinned so a changed solver result cannot silently
-  # change the scientific toolchain. Generate an explicit platform lock for
-  # each frozen release; see docs/usage.md#reproducibility.
+  # Versions are pinned so a different solver result cannot change the toolchain.
   - python=3.10.20
   - fastqc=0.12.1
   - multiqc=1.29
   - fastp=0.24.0
   - adapterremoval=2.3.4
   - bwa=0.7.19
-  - samtools=1.21
   - kraken2=2.1.6
   - bracken=2.9
-  - biom-format=2.1.17
   - matplotlib=3.10.3

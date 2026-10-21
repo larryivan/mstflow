@@ -41,7 +41,7 @@ def collect_qc(files):
     return qc
 
 
-def input_and_trimmed(sample, layout, files):
+def input_and_trimmed(layout, files):
     """Molecules entering preprocessing and leaving it."""
     pairs = 2 if layout == "PE" else 1
     if "fastp" in files:
@@ -87,7 +87,7 @@ def main():
         for meta in csv.DictReader(handle, delimiter="\t"):
             sample = meta["sample_id"]
             files = qc.get(sample, {})
-            reads_in, trimmed = input_and_trimmed(sample, meta["layout"], files)
+            reads_in, trimmed = input_and_trimmed(meta["layout"], files)
             if "host_qc" in files:
                 host = read_metric_table(files["host_qc"])
                 after_host = as_int(host["retained_fragments"])

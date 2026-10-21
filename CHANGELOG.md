@@ -39,7 +39,7 @@ First public release.
   inferred from `fastq_2`, which may be left empty or omitted, and libraries with
   `host_action` set to `skip` need no `host_ref`. Relative paths are read relative to
   the samplesheet (paths relative to the launch directory still work).
-- Bracken runs by default, and `--bracken_db` defaults to `--kraken2_db`.
+- Bracken runs by default and reads the classifier's database.
 - Parameters are validated strictly against their declared types: booleans must be
   `true` or `false`, and `--bracken_read_len` takes `auto` or a positive integer.
   On/off options given on the command line, such as `--remove_host false`, now take
@@ -56,3 +56,12 @@ First public release.
   Choose a scheduler in your own config instead, passed with `-c`; see docs/usage.md.
 - `--run_sourcetracker2`, `--sourcetracker2_extra_args` and `--sourcetracker2_loo`;
   cross-validation by study replaces SourceTracker2's leave-one-out.
+- `--bracken_db` and `--fragment_pair_gap`.
+- The `panel_role` column with its `--attribution_*_panel_roles` options, and
+  `--attribution_exclude_source_envs`/`_classes`: leave `source_sink` empty to keep a
+  library out of attribution. `category` no longer stands in for `model_source_env`.
+- The samplesheet's `preprocess_mode` and `bracken_read_len` columns: the trimming
+  follows from `age_group` and `layout`, and the Bracken read length from each
+  library's reads (or `--bracken_read_len`).
+- `attribution_excluded_samples.tsv`: `attribution_sample_qc.tsv` says which samples
+  were left out and why.

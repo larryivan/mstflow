@@ -51,7 +51,7 @@ With `--run_bracken false` the files start with the classifier, `kraken2_` or
 | `qc/fastqc_raw/`, `qc/fastqc_clean/` | FastQC before trimming and after host removal |
 | `pipeline_info/` | Validated samplesheet, Nextflow report, timeline, trace and DAG |
 
-Every directory also holds a `*.versions.yml` per step, recording the exact tool versions used.
+Each step that runs a tool also writes a `*.versions.yml` beside its output, recording the version used.
 
 Large intermediate FASTQ files stay in the Nextflow work directory unless
 `--publish_intermediates true` is set. Delete the work directory once you no longer

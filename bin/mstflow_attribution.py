@@ -27,7 +27,6 @@ from collections import OrderedDict
 
 UNKNOWN = "Unknown"
 RESULT_FIELDS = ["analysis", "method", "sink", "source", "estimate", "sd", "quantity"]
-QUANTITIES = ("proportion", "probability")
 NA_VALUES = {"", "NA", "N/A", "NONE", "NULL"}
 METHOD_NAMES = OrderedDict([
     ("sourcetracker2", "SourceTracker2"),
@@ -126,8 +125,6 @@ def write_results(path, analysis, method, quantity, estimates, tolerance=1e-3):
     Every sink must cover the same sources, Unknown included, and its estimates must
     sum to one within ``tolerance``; they are then rescaled to sum to exactly one.
     """
-    if quantity not in QUANTITIES:
-        raise SystemExit(f"unknown quantity: {quantity}")
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(RESULT_FIELDS)

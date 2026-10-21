@@ -1,3 +1,5 @@
+include { splitList } from '../subworkflows/utils'
+
 /*
  * Hold out the sources of one group (by default one study) at a time and turn them
  * into sinks of known origin, so every method can be scored on data it has not seen.
@@ -21,7 +23,7 @@ process SPLIT_ATTRIBUTION_FOLDS {
     path "folds.tsv", emit: summary
 
     script:
-    def withSourceTracker = 'sourcetracker2' in params.attribution_methods.toString().tokenize(',')*.trim()
+    def withSourceTracker = 'sourcetracker2' in splitList(params.attribution_methods)
     def minSink = withSourceTracker ? params.sourcetracker2_sink_rarefaction_depth : 0
     """
     python3 ${split_script} \\

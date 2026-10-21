@@ -1,11 +1,7 @@
 # Nextflow runtime state
-.nextflow/
 .nextflow*
-.nextflow.log*
 work/
 work-*/
-.command.*
-.exitcode
 
 # Pipeline outputs and scratch space
 results/
@@ -16,14 +12,10 @@ logs/
 tmp/
 scratch/
 publish/
-report.html
-timeline.html
-trace.txt
-dag.*
 slurm-*.out
 slurm-*.err
 
-# Local data, references, and databases
+# Local data, references and databases
 data/
 refs/
 db/
@@ -32,96 +24,63 @@ kraken2*/
 bracken*/
 taxdump/
 *.k2d
-hash.k2d
-opts.k2d
-taxo.k2d
 database*.idx
 
 # Generated stub-test data (tests/stub/make_stub_data.py)
 tests/stub/data/
 
-# Sequencing files
-*.fastq
-*.fastq.gz
-*.fq
-*.fq.gz
-*.fasta
-*.fasta.gz
-*.fa
-*.fa.gz
-*.fna
-*.fna.gz
+# Test data built by assets/test/make_test_data.py; it is published as a release asset
+assets/test/build/
 
-# Alignment and reference indices
+# Sequencing files, alignments and indices
+*.fastq
+*.fq
+*.fasta
+*.fa
+*.fna
 *.bam
 *.bai
 *.cram
 *.crai
 *.sam
-*.sai
 *.amb
 *.ann
 *.bwt
 *.pac
 *.sa
 *.fai
-*.gzi
 
-# Taxonomy/profiling large intermediates
-*.biom
-*.rma6
-*.kraken
-*.kraken2
-*.kreport
-*.bracken
-*.bracken.tsv
+# Archives and images
+*.gz
+*.tar
+*.tgz
+*.zip
+*.bz2
+*.xz
+*.sif
 
-# Conda/mamba local environments
-.conda/
-.mamba/
-conda-env/
-conda-cache/
-env/
-venv/
-.venv/
+# Tool reports produced outside the results directory
+*_fastqc.html
+*_fastqc.zip
+*.fastp.html
+*.fastp.json
+multiqc_data/
 
-# Python
+# Python and environments
 __pycache__/
 *.py[cod]
 *.egg-info/
+.conda/
+.venv/
+venv/
 
 # Machine-specific parameters and credentials
 params.local.yml
 params.*.local.yml
 .env
 
-# Tool reports produced outside the default results directory
-*_fastqc.html
-*_fastqc.zip
-*.fastp.html
-*.fastp.json
-*_multiqc_report.html
-multiqc_data/
-
-# Archives and downloaded bundles
-*.tar
-*.tar.gz
-*.tgz
-*.zip
-*.gz
-*.bz2
-*.xz
-*.aria2
-*.sif
-
-# OS/editor
+# OS and editors
 .DS_Store
 *.swp
-*.swo
 .idea/
 .vscode/
-
-# The recipe for the test data is tracked; the data it builds is published as a release
-# asset and is not.
-!assets/test/**
-assets/test/build/

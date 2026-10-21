@@ -9,8 +9,6 @@
  *                  host removal  or KrakenUniq           SourceID-NMF, SourcePredict
  */
 
-nextflow.enable.dsl = 2
-
 include { VALIDATE_METADATA } from './modules/validate_metadata'
 include { SUMMARIZE_SAMPLES } from './modules/summarize_samples'
 include { MULTIQC_REPORT } from './modules/multiqc'
@@ -31,10 +29,6 @@ workflow {
     checkParameters()
 
     def methods = splitList(params.attribution_methods)
-    def database = resolveDatabase()
-    def taxdumpNodes = isOn(params.run_kraken2) && params.taxon_filter == 'prokaryote'
-        ? taxdumpFile(params.taxdump, 'nodes.dmp', 'taxon_filter=prokaryote')
-        : file("${projectDir}/assets/no_taxdump.nodes.dmp", checkIfExists: true)
 
     def samplesheet = file(params.input, checkIfExists: true)
     if (samplesheet instanceof List) {
@@ -53,16 +47,17 @@ workflow {
     qc_files = PREPROCESS.out.qc
 
     if (isOn(params.run_kraken2)) {
-        PROFILE(PREPROCESS.out.reads, metadata, channel.value(database), channel.value(taxdumpNodes))
+        def taxdumpNodes = params.taxon_filter == 'prokaryote'
+            ? taxdumpFile(params.taxdump, 'nodes.dmp', 'taxon_filter=prokaryote')
+            : []
+        PROFILE(PREPROCESS.out.reads, metadata, channel.value(resolveDatabase()), channel.value(taxdumpNodes))
         qc_files = qc_files.mix(PROFILE.out.qc)
 
         // One row per sample: molecules kept by each step, and depth flags.
         SUMMARIZE_SAMPLES(
             metadata,
             PROFILE.out.sample_qc,
-            PREPROCESS.out.step_counts
-                .filter { qc -> qc.name ==~ /.+\.(fastp\.json|adapterremoval\.log|adapterremoval\.fragment_qc\.tsv|host_removal\.fragment_qc\.tsv)/ }
-                .toSortedList { a, b -> a.name <=> b.name },
+            PREPROCESS.out.step_counts.toSortedList { a, b -> a.name <=> b.name },
             binScript('summarize_samples.py')
         )
         qc_files = qc_files.mix(SUMMARIZE_SAMPLES.out.multiqc)
@@ -73,7 +68,6 @@ workflow {
                 metadata,
                 PROFILE.out.sample_qc
             )
-            qc_files = qc_files.mix(ATTRIBUTION.out.qc)
         }
     }
 
@@ -85,9 +79,13 @@ workflow {
     // The handler runs outside the workflow's scope, so it gets plain values.
     def run = workflow
     def report = log
-    def outdir = params.outdir
     def summaryFile = file("${params.outdir}/summary/sample_summary.tsv")
-    def comparisonFile = file("${params.outdir}/attribution/${params.attribution_label}/comparison.tsv")
+    def outputs = [
+        Summary: 'summary/sample_summary.tsv',
+        Tables: 'tables/',
+        Attribution: "attribution/${params.attribution_label}/",
+        Report: 'qc/multiqc/multiqc_report.html',
+    ].collect { name, path -> ["  ${name.padRight(15)} ${params.outdir}/${path}".toString(), file("${params.outdir}/${path}")] }
     run.onComplete {
         def lines = ['']
         if (run.success) {
@@ -97,13 +95,8 @@ workflow {
                 def flagged = rows.findAll { row -> row.flags != 'ok' }
                 lines << "  ${rows.size()} samples, ${flagged.size()} flagged as too shallow to interpret".toString()
                 flagged.each { row -> lines << "    ${row.sample_id}: ${row.flags}".toString() }
-                lines << "  Summary      ${summaryFile}".toString()
             }
-            lines << "  Tables       ${outdir}/tables/".toString()
-            if (comparisonFile.exists()) {
-                lines << "  Attribution  ${comparisonFile.parent}/".toString()
-            }
-            lines << "  Report       ${outdir}/qc/multiqc/multiqc_report.html".toString()
+            outputs.findAll { _line, output -> output.exists() }.each { line, _output -> lines << line }
         } else {
             lines << 'MSTFlow stopped with an error. The message above says why; .nextflow.log has the details.'
         }
@@ -153,16 +146,9 @@ def checkParameters() {
     if ((params.kraken2_min_distinct_minimizers as int) > 0 && !isOn(params.kraken2_report_minimizer_data)) {
         error 'kraken2_min_distinct_minimizers needs kraken2_report_minimizer_data = true'
     }
-    def known = ['sourcetracker2', 'feast', 'fastst', 'sourceid_nmf', 'sourcepredict']
     def methods = splitList(params.attribution_methods)
-    if (methods - known) {
-        error "Unknown attribution method(s): ${(methods - known).join(', ')}. Choose from ${known.join(', ')}."
-    }
     if (methods && !isOn(params.run_kraken2)) {
         error 'Source attribution needs the count table, so classification must run (run_kraken2)'
-    }
-    if (!(params.attribution_label ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
-        error "Parameter 'attribution_label' must be filesystem-safe"
     }
     // FEAST and FastST come from GitHub and are only packaged in the attribution image.
     def imageOnly = methods.intersect(['feast', 'fastst'])
@@ -176,11 +162,8 @@ def checkParameters() {
 
 
 // A database is a directory, or a .tar.gz archive (local or a URL) that the workflow
-// unpacks once. Bracken always uses the same snapshot as Kraken2.
+// unpacks once. Bracken reads the classifier's database.
 def resolveDatabase() {
-    if (!isOn(params.run_kraken2)) {
-        return null
-    }
     if (params.classifier == 'krakenuniq') {
         if (isArchive(params.krakenuniq_db)) {
             return file(params.krakenuniq_db, checkIfExists: true)
@@ -192,21 +175,11 @@ def resolveDatabase() {
         }
         return directory
     }
-    def hint = 'It should point at a Kraken2 database; prebuilt ones are listed at https://benlangmead.github.io/aws-indexes/k2'
-    if (params.bracken_db && params.bracken_db != params.kraken2_db) {
-        if (isArchive(params.kraken2_db) || isArchive(params.bracken_db)) {
-            error 'With a database archive, leave bracken_db unset; Bracken reads the same archive as Kraken2'
-        }
-        def kraken = requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'], hint)
-        def bracken = requireDirectory('bracken_db', params.bracken_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'], hint)
-        if (kraken.toRealPath() != bracken.toRealPath()) {
-            error 'kraken2_db and bracken_db must resolve to the same database snapshot'
-        }
-    }
     if (isArchive(params.kraken2_db)) {
         return file(params.kraken2_db, checkIfExists: true)
     }
-    def directory = requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'], hint)
+    def directory = requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'],
+        'It should point at a Kraken2 database; prebuilt ones are listed at https://benlangmead.github.io/aws-indexes/k2')
     if (isOn(params.run_bracken)) {
         requireBrackenDistributions(directory, 'kraken2')
     }

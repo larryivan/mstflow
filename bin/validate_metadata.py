@@ -1,48 +1,43 @@
 #!/usr/bin/env python3
+"""Check a samplesheet and write the normalized copy the workflow reads.
+
+Layout is inferred from fastq_2 when it is not given, the trimming mode from age
+group and layout, and host removal defaults to the default host reference. Every
+problem is reported, one per line, before the run fails. Columns the workflow does
+not know are kept, so they reach the attribution map.
+"""
 import argparse
 import csv
-import os
 import re
 import sys
 
 
 REQUIRED_COLUMNS = ["sample_id", "fastq_1", "age_group"]
-# fastq_2 may be omitted for an all single-end sheet, and layout is inferred from
-# fastq_2 when absent. Both are always written to the normalized output.
-CANONICAL_COLUMNS = ["sample_id", "fastq_1", "fastq_2", "layout", "age_group"]
-ALLOWED_LAYOUTS = {"SE", "PE"}
-ALLOWED_AGE_GROUPS = {"modern", "ancient"}
-ALLOWED_PREPROCESS_MODES = {
-    "fastp_pe",
-    "fastp_se",
-    "adapterremoval_pe_collapse",
-    "adapterremoval_se",
-}
-ALLOWED_SOURCE_SINK = {"source", "sink"}
-ALLOWED_HOST_ACTIONS = {"remove", "skip"}
-SAFE_SAMPLE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-STANDARD_METADATA_COLUMNS = [
+OUTPUT_COLUMNS = [
+    "sample_id",
+    "fastq_1",
+    "fastq_2",
+    "layout",
+    "age_group",
     "preprocess_mode",
-    "bracken_read_len",
     "host_action",
     "host_ref",
+    "host_group",
     "source_sink",
     "model_source_env",
     "unit_id",
-    "panel_role",
-    "panel_layer",
-    "category",
-    "validation_group",
-    "project_group",
-    "host_group",
-    "source_major",
-    "source_class",
-    "sample_label",
     "project",
-    "experiment",
-    "run",
 ]
-OUTPUT_COLUMNS = CANONICAL_COLUMNS + STANDARD_METADATA_COLUMNS
+# Modern libraries are trimmed by fastp; ancient ones by AdapterRemoval, which also
+# collapses overlapping read pairs into the molecules they came from.
+PREPROCESS_MODES = {
+    ("modern", "PE"): "fastp_pe",
+    ("modern", "SE"): "fastp_se",
+    ("ancient", "PE"): "adapterremoval_pe_collapse",
+    ("ancient", "SE"): "adapterremoval_se",
+}
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+SAFE_ID_RULE = "use only letters, digits, '.', '_' and '-' and start with a letter or digit"
 
 
 def norm(value):
@@ -59,149 +54,21 @@ def fail(errors):
     sys.exit(1)
 
 
-def host_reference_errors(path):
-    if is_na(path):
-        return ["default host FASTA is not configured"]
-    errors = []
-    if not os.path.isfile(path):
-        return [f"host FASTA does not exist: {path}"]
-    for suffix in (".amb", ".ann", ".bwt", ".pac", ".sa"):
-        sidecar = f"{path}{suffix}"
-        if not os.path.isfile(sidecar):
-            errors.append(f"BWA index sidecar does not exist: {sidecar}")
-    return errors
-
-
-def choose_preprocess_mode(layout, age_group, requested):
-    if requested and requested != "auto":
-        return requested
-    if age_group == "modern" and layout == "PE":
-        return "fastp_pe"
-    if age_group == "modern" and layout == "SE":
-        return "fastp_se"
-    if age_group == "ancient" and layout == "PE":
-        return "adapterremoval_pe_collapse"
-    if age_group == "ancient" and layout == "SE":
-        return "adapterremoval_se"
-    raise ValueError(f"cannot infer preprocess mode for layout={layout}, age_group={age_group}")
-
-
-def first_present(row, *columns):
-    for column in columns:
-        value = norm(row.get(column))
-        if not is_na(value):
-            return value
-    return ""
-
-
-def output_columns(input_columns):
-    """Return canonical columns followed by every user-provided extra column."""
-    return OUTPUT_COLUMNS + [column for column in input_columns if column not in OUTPUT_COLUMNS]
-
-
-def normalized_output_row(
-    row,
-    sample_id,
-    fastq_1,
-    fastq_2,
-    layout,
-    age_group,
-    preprocess_mode,
-    host_action,
-    host_group,
-    host_ref,
-    input_columns,
-):
-    source_sink = norm(row.get("source_sink")).lower()
-    if is_na(source_sink):
-        source_sink = ""
-    category = first_present(row, "category", "source_class", "class")
-    model_source_env = first_present(row, "model_source_env")
-    # ``category`` is the Reference Panel's canonical environment label.  It is
-    # a safe alias only after a row has been explicitly selected as a source or
-    # sink; it never opts an unrelated row into SourceTracker.
-    if not model_source_env and source_sink in ALLOWED_SOURCE_SINK:
-        model_source_env = category
-
-    # Preserve the complete input schema.  This prevents panel design fields
-    # from disappearing between metadata validation and SourceTracker QC.
-    output = {column: norm(row.get(column)) for column in input_columns}
-    requested_bracken_length = norm(row.get("bracken_read_len"))
-    if is_na(requested_bracken_length) or requested_bracken_length.lower() in {
-        "auto",
-        "per_sample",
-    }:
-        requested_bracken_length = "auto"
-    elif requested_bracken_length.isdigit() and int(requested_bracken_length) > 0:
-        requested_bracken_length = str(int(requested_bracken_length))
-    output.update({
-        "sample_id": sample_id,
-        "fastq_1": fastq_1,
-        "fastq_2": "NA" if is_na(fastq_2) else fastq_2,
-        "layout": layout,
-        "age_group": age_group,
-        "preprocess_mode": preprocess_mode,
-        "bracken_read_len": requested_bracken_length,
-        "host_action": host_action,
-        "host_ref": (
-            "NA" if host_action == "skip" else ("default" if is_na(host_ref) else host_ref)
-        ),
-        "source_sink": "NA" if is_na(source_sink) else source_sink,
-        "model_source_env": "NA" if is_na(model_source_env) else model_source_env,
-        "unit_id": first_present(row, "unit_id") or sample_id,
-        "panel_role": first_present(row, "panel_role") or "NA",
-        "panel_layer": first_present(row, "panel_layer", "layer") or "NA",
-        "category": category or "NA",
-        "validation_group": first_present(row, "validation_group") or "NA",
-        "project_group": first_present(row, "project_group") or "NA",
-        "host_group": host_group,
-        "source_major": first_present(row, "source_major", "major") or "NA",
-        "source_class": first_present(row, "source_class", "class", "category") or "NA",
-        "sample_label": norm(row.get("sample_label")) or sample_id,
-        "project": norm(row.get("project")) or "NA",
-        "experiment": norm(row.get("experiment")) or "NA",
-        "run": norm(row.get("run")) or sample_id,
-    })
-    return output
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Validate and normalize mstflow metadata.")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--default-host-group", default="human")
     parser.add_argument(
-        "--default-host-fasta",
-        help=(
-            "Default host FASTA used when host_ref=default. Supplying this option "
-            "enables early FASTA and classic-BWA sidecar validation."
-        ),
-    )
-    parser.add_argument(
         "--require-explicit-host-for-nondefault",
         action="store_true",
-        help=(
-            "Reject rows whose host_group differs from --default-host-group when "
-            "host_ref is default/NA. This prevents non-human samples from silently "
-            "using the default human reference."
-        ),
+        help="Reject rows whose host_group differs from --default-host-group but use the default host "
+             "reference, so non-human samples are not silently filtered against the human genome.",
     )
     parser.add_argument(
         "--require-explicit-host-action",
         action="store_true",
-        help=(
-            "Reject rows that omit host_action. Use this for mixed host-aware runs "
-            "so every row explicitly declares remove or skip."
-        ),
-    )
-    parser.add_argument(
-        "--skip-filesystem-checks",
-        action="store_true",
-        help=(
-            "Validate metadata semantics while leaving FASTQ/host paths opaque. "
-            "Use only when the workflow controller independently stages and "
-            "checks every referenced file."
-        ),
+        help="Reject rows that leave host_action empty, so every row declares remove or skip.",
     )
     args = parser.parse_args()
 
@@ -209,202 +76,108 @@ def main():
     if not default_host_group:
         fail(["--default-host-group must not be empty"])
 
+    with open(args.input, newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        columns = reader.fieldnames
+        if columns is None:
+            fail([f"metadata is empty: {args.input}"])
+        duplicate_columns = sorted({column for column in columns if columns.count(column) > 1})
+        if duplicate_columns:
+            fail([f"metadata contains duplicate column name(s): {', '.join(duplicate_columns)}"])
+        missing = [column for column in REQUIRED_COLUMNS if column not in columns]
+        if missing:
+            fail([f"metadata is missing required column(s): {', '.join(missing)}"])
+        rows = list(reader)
+
     errors = []
     seen = set()
     rows_out = []
-    checked_host_references = {}
+    for line_no, row in enumerate(rows, start=2):
+        where = f"line {line_no}"
+        sample_id = norm(row.get("sample_id"))
+        if is_na(sample_id):
+            errors.append(f"{where}: sample_id is empty or uses a reserved missing-value token")
+            continue
+        if not SAFE_ID.fullmatch(sample_id):
+            errors.append(f"{where}: sample_id '{sample_id}' is not filesystem-safe; {SAFE_ID_RULE}")
+        if sample_id in seen:
+            errors.append(f"{where}: duplicate sample_id '{sample_id}'")
+        seen.add(sample_id)
 
-    with open(args.input, newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t")
-        if reader.fieldnames is None:
-            fail([f"metadata is empty: {args.input}"])
+        fastq_1 = norm(row.get("fastq_1"))
+        fastq_2 = norm(row.get("fastq_2"))
+        layout = norm(row.get("layout")).upper()
+        if is_na(layout):
+            layout = "SE" if is_na(fastq_2) else "PE"
+        elif layout not in ("SE", "PE"):
+            errors.append(f"{where}: layout must be SE or PE, or left empty to infer it from fastq_2")
+        age_group = norm(row.get("age_group")).lower()
+        if age_group not in ("modern", "ancient"):
+            errors.append(f"{where}: age_group must be modern or ancient")
+        if is_na(fastq_1):
+            errors.append(f"{where}: fastq_1 is required")
+        if layout == "PE" and is_na(fastq_2):
+            errors.append(f"{where}: PE samples require fastq_2")
+        elif layout == "SE" and not is_na(fastq_2):
+            errors.append(f"{where}: SE samples must set fastq_2 to NA")
 
-        duplicate_columns = sorted(
-            {column for column in reader.fieldnames if reader.fieldnames.count(column) > 1}
-        )
-        if duplicate_columns:
-            fail([f"metadata contains duplicate column name(s): {', '.join(duplicate_columns)}"])
-
-        missing = [column for column in REQUIRED_COLUMNS if column not in reader.fieldnames]
-        if missing:
-            fail([f"metadata is missing required column(s): {', '.join(missing)}"])
-
-        for line_no, row in enumerate(reader, start=2):
-            sample_id = norm(row.get("sample_id"))
-            if is_na(sample_id):
+        host_action = norm(row.get("host_action")).lower()
+        if is_na(host_action):
+            if args.require_explicit_host_action:
+                errors.append(f"{where}: host_action must be explicitly set to remove or skip")
+            host_action = "remove"
+        elif host_action not in ("remove", "skip"):
+            errors.append(f"{where}: host_action must be remove or skip")
+        host_ref = norm(row.get("host_ref"))
+        host_group = norm(row.get("host_group")).lower()
+        if host_action == "skip":
+            if not is_na(host_ref):
+                errors.append(f"{where}: host_action=skip conflicts with host_ref={host_ref}; leave host_ref empty")
+            host_ref = "NA"
+            host_group = "NA" if is_na(host_group) else host_group
+        else:
+            host_ref = "default" if is_na(host_ref) else host_ref
+            host_group = default_host_group if is_na(host_group) else host_group
+            if args.require_explicit_host_for_nondefault and host_group != default_host_group and host_ref == "default":
                 errors.append(
-                    f"line {line_no}: sample_id is empty or uses a reserved missing-value token"
-                )
-                continue
-            if not SAFE_SAMPLE_ID.fullmatch(sample_id):
-                errors.append(
-                    f"line {line_no}: sample_id '{sample_id}' is not filesystem-safe; "
-                    "use only letters, digits, '.', '_' and '-' and start with a letter or digit"
-                )
-            if sample_id in seen:
-                errors.append(f"line {line_no}: duplicate sample_id '{sample_id}'")
-            seen.add(sample_id)
-
-            fastq_2_given = not is_na(row.get("fastq_2"))
-            layout = norm(row.get("layout")).upper()
-            if is_na(layout):
-                layout = "PE" if fastq_2_given else "SE"
-            elif layout not in ALLOWED_LAYOUTS:
-                errors.append(f"line {line_no}: layout must be SE or PE, or left empty to infer it from fastq_2")
-
-            age_group = norm(row.get("age_group")).lower()
-            if age_group not in ALLOWED_AGE_GROUPS:
-                errors.append(f"line {line_no}: age_group must be modern or ancient")
-
-            fastq_1 = norm(row.get("fastq_1"))
-            fastq_2 = norm(row.get("fastq_2"))
-            if is_na(fastq_1):
-                errors.append(f"line {line_no}: fastq_1 is required")
-            elif not args.skip_filesystem_checks and not os.path.isfile(fastq_1):
-                errors.append(f"line {line_no}: fastq_1 is not a regular file: {fastq_1}")
-
-            if layout == "PE":
-                if is_na(fastq_2):
-                    errors.append(f"line {line_no}: PE samples require fastq_2")
-                elif not args.skip_filesystem_checks and not os.path.isfile(fastq_2):
-                    errors.append(f"line {line_no}: fastq_2 is not a regular file: {fastq_2}")
-            elif not is_na(fastq_2):
-                errors.append(f"line {line_no}: SE samples must set fastq_2 to NA")
-
-            requested_mode = norm(row.get("preprocess_mode")).lower()
-            if is_na(requested_mode):
-                requested_mode = "auto"
-
-            try:
-                preprocess_mode = choose_preprocess_mode(layout, age_group, requested_mode)
-            except ValueError as exc:
-                errors.append(f"line {line_no}: {exc}")
-                preprocess_mode = requested_mode
-
-            if preprocess_mode not in ALLOWED_PREPROCESS_MODES:
-                errors.append(
-                    f"line {line_no}: preprocess_mode must be auto or one of "
-                    f"{', '.join(sorted(ALLOWED_PREPROCESS_MODES))}"
+                    f"{where}: host_group '{host_group}' requires an explicit host_ref; "
+                    f"the default reference is for host_group '{default_host_group}'"
                 )
 
-            if preprocess_mode.startswith("fastp") and age_group != "modern":
-                errors.append(f"line {line_no}: fastp preprocessing is only allowed for modern samples")
-            if preprocess_mode.startswith("adapterremoval") and age_group != "ancient":
-                errors.append(f"line {line_no}: AdapterRemoval preprocessing is only allowed for ancient samples")
-            if preprocess_mode.endswith("_pe") or preprocess_mode == "adapterremoval_pe_collapse":
-                if layout != "PE":
-                    errors.append(f"line {line_no}: {preprocess_mode} requires PE layout")
-            if preprocess_mode.endswith("_se") and layout != "SE":
-                errors.append(f"line {line_no}: {preprocess_mode} requires SE layout")
+        source_sink = norm(row.get("source_sink")).lower()
+        source_sink = "NA" if is_na(source_sink) else source_sink
+        model_source_env = norm(row.get("model_source_env"))
+        model_source_env = "NA" if is_na(model_source_env) else model_source_env
+        if source_sink not in ("source", "sink", "NA"):
+            errors.append(f"{where}: source_sink must be source or sink")
+        if source_sink == "source" and model_source_env == "NA":
+            errors.append(f"{where}: source rows require model_source_env")
 
-            requested_bracken_length = norm(row.get("bracken_read_len"))
-            if not is_na(requested_bracken_length) and requested_bracken_length.lower() not in {
-                "auto",
-                "per_sample",
-            }:
-                if not requested_bracken_length.isdigit() or int(requested_bracken_length) <= 0:
-                    errors.append(
-                        f"line {line_no}: bracken_read_len must be auto or a positive integer"
-                    )
+        unit_id = norm(row.get("unit_id"))
+        unit_id = sample_id if is_na(unit_id) else unit_id
+        if not SAFE_ID.fullmatch(unit_id):
+            errors.append(f"{where}: unit_id '{unit_id}' is not filesystem-safe; {SAFE_ID_RULE}")
 
-            requested_host_action = norm(row.get("host_action")).lower()
-            if args.require_explicit_host_action and is_na(requested_host_action):
-                errors.append(
-                    f"line {line_no}: host_action must be explicitly set to remove or skip"
-                )
-            host_action = "remove" if is_na(requested_host_action) else requested_host_action
-            if host_action not in ALLOWED_HOST_ACTIONS:
-                errors.append(
-                    f"line {line_no}: host_action must be remove or skip"
-                )
-                # Continue validation deterministically without treating an
-                # invalid value as an accidental skip.
-                host_action = "remove"
-
-            requested_host_ref = norm(row.get("host_ref"))
-            host_ref = requested_host_ref or "default"
-            requested_host_group = norm(row.get("host_group")).lower()
-            host_group = (
-                "none" if host_action == "skip" else default_host_group
-            ) if is_na(requested_host_group) else requested_host_group
-            if host_action == "skip":
-                if not is_na(requested_host_ref):
-                    errors.append(
-                        f"line {line_no}: host_action=skip conflicts with "
-                        f"host_ref={requested_host_ref}; leave host_ref empty"
-                    )
-                host_ref = "NA"
-            else:
-                if (
-                    not args.skip_filesystem_checks
-                    and not is_na(host_ref)
-                    and host_ref != "default"
-                    and not os.path.exists(host_ref)
-                ):
-                    errors.append(
-                        f"line {line_no}: host_ref must be default, NA, or an existing FASTA path: {host_ref}"
-                    )
-                if args.default_host_fasta is not None and not args.skip_filesystem_checks:
-                    effective_host_ref = (
-                        norm(args.default_host_fasta)
-                        if is_na(host_ref) or host_ref == "default"
-                        else host_ref
-                    )
-                    if effective_host_ref not in checked_host_references:
-                        checked_host_references[effective_host_ref] = host_reference_errors(
-                            effective_host_ref
-                        )
-                        errors.extend(checked_host_references[effective_host_ref])
-                if (
-                    args.require_explicit_host_for_nondefault
-                    and host_group != default_host_group
-                    and (is_na(host_ref) or host_ref == "default")
-                ):
-                    errors.append(
-                        f"line {line_no}: host_group '{host_group}' requires an explicit host_ref; "
-                        f"the default reference is for host_group '{default_host_group}'"
-                    )
-
-            source_sink = norm(row.get("source_sink")).lower()
-            if is_na(source_sink):
-                source_sink = ""
-            category = first_present(row, "category", "source_class", "class")
-            model_source_env = first_present(row, "model_source_env")
-            if not model_source_env and source_sink in ALLOWED_SOURCE_SINK:
-                model_source_env = category
-            if source_sink and source_sink not in ALLOWED_SOURCE_SINK:
-                errors.append(f"line {line_no}: source_sink must be source or sink")
-            if source_sink == "source" and is_na(model_source_env):
-                errors.append(
-                    f"line {line_no}: source rows require model_source_env or category"
-                )
-
-            unit_id = first_present(row, "unit_id") or sample_id
-            if not SAFE_SAMPLE_ID.fullmatch(unit_id):
-                errors.append(
-                    f"line {line_no}: unit_id '{unit_id}' is not filesystem-safe; "
-                    "use only letters, digits, '.', '_' and '-' and start with a letter or digit"
-                )
-
-            rows_out.append(
-                normalized_output_row(
-                    row,
-                    sample_id,
-                    fastq_1,
-                    fastq_2,
-                    layout,
-                    age_group,
-                    preprocess_mode,
-                    host_action,
-                    host_group,
-                    host_ref,
-                    reader.fieldnames,
-                )
-            )
+        output = {column: norm(row.get(column)) for column in columns}
+        output.update({
+            "sample_id": sample_id,
+            "fastq_1": fastq_1,
+            "fastq_2": "NA" if is_na(fastq_2) else fastq_2,
+            "layout": layout,
+            "age_group": age_group,
+            "preprocess_mode": PREPROCESS_MODES.get((age_group, layout), "NA"),
+            "host_action": host_action,
+            "host_ref": host_ref,
+            "host_group": host_group,
+            "source_sink": source_sink,
+            "model_source_env": model_source_env,
+            "unit_id": unit_id,
+            "project": norm(row.get("project")) or "NA",
+        })
+        rows_out.append(output)
 
     if not rows_out:
         errors.append(f"metadata contains no sample rows: {args.input}")
-
     if errors:
         fail(errors)
 
@@ -412,7 +185,7 @@ def main():
         writer = csv.DictWriter(
             handle,
             delimiter="\t",
-            fieldnames=output_columns(reader.fieldnames),
+            fieldnames=OUTPUT_COLUMNS + [column for column in columns if column not in OUTPUT_COLUMNS],
             lineterminator="\n",
         )
         writer.writeheader()
