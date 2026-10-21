@@ -116,9 +116,9 @@ process KRAKEN2_PROFILE {
     def saveClassifications = (params.kraken2_save_read_classifications ?: false).toString().toBoolean()
     def reportMinimizers = params.kraken2_report_minimizer_data == null ? true : params.kraken2_report_minimizer_data.toString().toBoolean()
     def stubClassification = saveClassifications ? "printf 'U\\tstub\\t0\\t40\\tA:40\\n' > ${id}.kraken2.output.txt" : ':'
-    def stubMinimizers = reportMinimizers ? "printf '0.00\\t0\\t0\\t0\\t0\\tU\\t0\\tunclassified\\n100.00\\t1\\t0\\t1\\t1\\tR\\t1\\troot\\n' > ${id}.kraken2.minimizer.report.txt" : ':'
+    def stubMinimizers = reportMinimizers ? "printf '0.00\\t0\\t0\\t0\\t0\\tU\\t0\\tunclassified\\n100.00\\t10\\t0\\t10\\t10\\tR\\t1\\troot\\n100.00\\t10\\t10\\t10\\t10\\tG\\t1301\\t  Streptococcus\\n' > ${id}.kraken2.minimizer.report.txt" : ':'
     """
-    printf '  0.00\t0\t0\tU\t0\tunclassified\n  100.00\t1\t0\tR\t1\troot\n' > ${id}.kraken2.report.txt
+    printf '  0.00\t0\t0\tU\t0\tunclassified\n  100.00\t10\t0\tR\t1\troot\n  100.00\t10\t10\tG\t1301\t    Streptococcus\n' > ${id}.kraken2.report.txt
     cp "${read_length_stats}" ${id}.kraken2.read_length.tsv
     cp "${read_length_stats}" ${id}.kraken2.fragment_qc.tsv
     ${stubClassification}

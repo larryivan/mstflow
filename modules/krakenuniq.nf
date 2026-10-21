@@ -1,7 +1,8 @@
 /*
  * KrakenUniq (Breitwieser et al. 2018): exact k-mer classification that also counts,
- * for every taxon, the unique k-mers its reads cover. Its databases may be larger
- * than memory; --krakenuniq_preload_size loads them in chunks of that size.
+ * for every taxon, the unique k-mers its reads cover. It takes Kraken2's place: its
+ * report goes to Bracken in the same way. Its databases may be larger than memory;
+ * --krakenuniq_preload_size loads them in chunks of that size.
  */
 process KRAKENUNIQ_PROFILE {
     label 'process_high'
@@ -13,7 +14,7 @@ process KRAKENUNIQ_PROFILE {
     tuple val(meta), path(reads), path(read_length_stats), path(input_mode), path(database)
 
     output:
-    tuple val(meta), path("${meta.id}.krakenuniq.report.txt"), emit: reports
+    tuple val(meta), path("${meta.id}.krakenuniq.report.txt"), path("${meta.id}.krakenuniq.read_length.tsv"), emit: reports
     path "${meta.id}.krakenuniq.fragment_qc.tsv", emit: qc
     path "${meta.id}.krakenuniq.versions.yml", emit: versions
 
@@ -46,6 +47,7 @@ process KRAKENUNIQ_PROFILE {
         exit 1
     fi
 
+    cp ${read_length_stats} ${meta.id}.krakenuniq.read_length.tsv
     cp ${read_length_stats} ${meta.id}.krakenuniq.fragment_qc.tsv
     printf '"${task.process}":\\n    krakenuniq: "%s"\\n' "\$(krakenuniq --version 2>&1 | awk 'NR == 1 { print \$NF }')" \\
         > ${meta.id}.krakenuniq.versions.yml
@@ -55,6 +57,7 @@ process KRAKENUNIQ_PROFILE {
     """
     printf '%%\\treads\\ttaxReads\\tkmers\\tdup\\tcov\\ttaxID\\trank\\ttaxName\\n0\\t0\\t0\\t0\\t0\\tNA\\t0\\tno rank\\tunclassified\\n100\\t10\\t0\\t10\\t1\\tNA\\t1\\tno rank\\troot\\n100\\t10\\t10\\t10\\t1\\tNA\\t1301\\tgenus\\t  Streptococcus\\n' \\
         > ${meta.id}.krakenuniq.report.txt
+    cp ${read_length_stats} ${meta.id}.krakenuniq.read_length.tsv
     cp ${read_length_stats} ${meta.id}.krakenuniq.fragment_qc.tsv
     printf '"${task.process}":\\n    krakenuniq: "stub"\\n' > ${meta.id}.krakenuniq.versions.yml
     """

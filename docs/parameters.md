@@ -55,8 +55,8 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--classifier` | Which classifier to use. `kraken2` classifies with Kraken2 and re-estimates abundances with Bracken. `krakenuniq` uses KrakenUniq, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Use one classifier for sources and sinks alike. | `kraken2` / `krakenuniq` | `kraken2` |
-| `--krakenuniq_db` | KrakenUniq database: a directory with database.kdb, database.idx and taxDB, or a .tar.gz of one; local or a URL. | string |  |
+| `--classifier` | Which classifier to use. `kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Bracken then re-estimates abundances after either. Use one classifier and database for sources and sinks alike. | `kraken2` / `krakenuniq` | `kraken2` |
+| `--krakenuniq_db` | KrakenUniq database: a directory with database.kdb, database.idx and taxDB (and Bracken's database<N>mers.kmer_distrib files, unless --run_bracken false), or a .tar.gz of one; local or a URL. | string |  |
 | `--krakenuniq_preload_size` | Load the KrakenUniq database in chunks of this size, e.g. 16G; unset loads it whole. | string |  |
 | `--krakenuniq_min_kmers` | Remove a taxon from a sample when its reads cover fewer unique k-mers. | integer | `1000` |
 | `--krakenuniq_min_reads` | Remove a taxon from a sample when it has fewer reads. | integer | `200` |
@@ -92,7 +92,7 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--run_bracken` | Re-estimate abundance with Bracken and build the feature tables. | boolean | `true` |
+| `--run_bracken` | Re-estimate abundances at --bracken_rank with Bracken; without it the tables hold the classifier's own clade counts. Bracken moves reads the classifier left at higher ranks down to --bracken_rank. It needs the database's database<N>mers.kmer_distrib files, which prebuilt Kraken2 indexes ship; for KrakenUniq, build them with `bracken-build -y krakenuniq -k 31`. | boolean | `true` |
 | `--bracken_rank` | Taxonomic rank of the output tables. | `D` / `P` / `C` / `O` / `F` / `G` / `S` | `G` |
 | `--bracken_read_len` | Bracken read-length model: `auto` picks the nearest available one per sample, or give a length. | string or integer | `auto` |
 | `--bracken_threshold` | Minimum reads for a taxon to be re-estimated. | integer | `10` |

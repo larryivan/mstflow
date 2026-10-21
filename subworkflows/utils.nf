@@ -107,15 +107,18 @@ def requireDirectory(name, value, requiredFiles, hint) {
 }
 
 
-def requireBrackenDistributions(directory) {
+def requireBrackenDistributions(directory, classifier) {
     def matches = java.nio.file.Files.newDirectoryStream(directory, 'database*mers.kmer_distrib')
     def foundDistribution = matches.iterator().hasNext()
     matches.close()
     if (!foundDistribution) {
+        def build = classifier == 'krakenuniq'
+            ? "`bracken-build -d ${directory} -y krakenuniq -k 31 -l 100`"
+            : "`bracken-build -d ${directory} -l 100`, or use a prebuilt index, which ships them"
         throw new IllegalArgumentException(
-            "bracken_db contains no database<N>mers.kmer_distrib files: ${directory}. " +
-            "Build one per read length with `bracken-build -d ${directory} -l 100`, " +
-            "or use a prebuilt index, which ships them."
+            "The ${classifier} database has no Bracken database<N>mers.kmer_distrib files: ${directory}. " +
+            "Build one per read length with ${build}; or set --run_bracken false to use the " +
+            "classifier's own counts."
         )
     }
 }

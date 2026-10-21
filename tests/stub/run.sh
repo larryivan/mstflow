@@ -14,7 +14,7 @@ nextflow run . \
     -stub-run \
     -resume
 
-# The same wiring with KrakenUniq in place of Kraken2 and Bracken.
+# The same wiring with KrakenUniq in place of Kraken2.
 nextflow run . \
     -profile test \
     -params-file tests/stub/params.yml \
@@ -23,5 +23,14 @@ nextflow run . \
     --krakenuniq_min_kmers 0 \
     --krakenuniq_min_reads 0 \
     --outdir results/stub_krakenuniq \
+    -stub-run \
+    -resume
+
+# Kraken2 without Bracken: the table holds Kraken2's own clade counts.
+nextflow run . \
+    -profile test \
+    -params-file tests/stub/params.yml \
+    --run_bracken false \
+    --outdir results/stub_no_bracken \
     -stub-run \
     -resume

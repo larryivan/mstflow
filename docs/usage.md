@@ -73,7 +73,18 @@ and, with source attribution, compare the cross-validation scores with and witho
 KrakenUniq classifies by exact k-mers and counts the unique k-mers each taxon's reads
 cover; taxa below `--krakenuniq_min_kmers` (1,000) unique k-mers or
 `--krakenuniq_min_reads` (200) reads are removed sample by sample, the thresholds aMeta
-uses. Its clade counts at `--bracken_rank` make the count table; Bracken is not used.
+uses. Bracken then re-estimates abundances, as after Kraken2, so the two classifiers
+give tables of the same kind. That needs Bracken's files in the KrakenUniq database:
+
+```bash
+bracken-build -d krakenuniq_db/ -y krakenuniq -k 31 -l 50
+```
+
+once per read length. The database must have been built without
+`--taxids-for-genomes` and `--taxids-for-sequences`: the taxa those options add are
+not in the taxonomy, and Bracken cannot place them. For a database without Bracken's
+files, such as aMeta's prebuilt one, `--run_bracken false` uses KrakenUniq's own clade
+counts at `--bracken_rank` instead, as aMeta does.
 KrakenUniq databases can be far larger than memory: `--krakenuniq_preload_size 32G`
 loads one in chunks of that size. Its index, `database.idx`, is always loaded whole; with
 the default minimizer length of 15 it is 8 GB. `--kraken2_cpus`, `--kraken2_memory` and

@@ -27,8 +27,8 @@ attributing it to a source is unreliable.
 ## `tables/`
 
 `G` is the rank (`--bracken_rank`) and `prokaryote` the taxon filter (`--taxon_filter`).
-With `--classifier krakenuniq` the files start with `krakenuniq_` instead of `bracken_`,
-and hold KrakenUniq's clade counts.
+With `--run_bracken false` the files start with the classifier, `kraken2_` or
+`krakenuniq_`, instead of `bracken_`, and hold its clade counts at that rank.
 
 | File | Contents |
 |---|---|

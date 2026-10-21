@@ -149,7 +149,7 @@
             "title": "Classifier",
             "type": "object",
             "fa_icon": "fas fa-microscope",
-            "description": "Kraken2 with Bracken, or KrakenUniq.",
+            "description": "Kraken2 or KrakenUniq; Bracken follows either.",
             "properties": {
                 "classifier": {
                     "type": "string",
@@ -159,11 +159,11 @@
                         "kraken2",
                         "krakenuniq"
                     ],
-                    "help_text": "`kraken2` classifies with Kraken2 and re-estimates abundances with Bracken. `krakenuniq` uses KrakenUniq, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Use one classifier for sources and sinks alike."
+                    "help_text": "`kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Bracken then re-estimates abundances after either. Use one classifier and database for sources and sinks alike."
                 },
                 "krakenuniq_db": {
                     "type": "string",
-                    "description": "KrakenUniq database: a directory with database.kdb, database.idx and taxDB, or a .tar.gz of one; local or a URL.",
+                    "description": "KrakenUniq database: a directory with database.kdb, database.idx and taxDB (and Bracken's database<N>mers.kmer_distrib files, unless --run_bracken false), or a .tar.gz of one; local or a URL.",
                     "format": "path",
                     "pattern": "^[^'\\n\\r]*$"
                 },
@@ -292,8 +292,9 @@
             "properties": {
                 "run_bracken": {
                     "type": "boolean",
-                    "description": "Re-estimate abundance with Bracken and build the feature tables.",
-                    "default": true
+                    "description": "Re-estimate abundances at --bracken_rank with Bracken; without it the tables hold the classifier's own clade counts.",
+                    "default": true,
+                    "help_text": "Bracken moves reads the classifier left at higher ranks down to --bracken_rank. It needs the database's database<N>mers.kmer_distrib files, which prebuilt Kraken2 indexes ship; for KrakenUniq, build them with `bracken-build -y krakenuniq -k 31`."
                 },
                 "bracken_db": {
                     "type": "string",

@@ -1,36 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 268" width="1000" height="268" font-family="Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
-<path d="M118 238 H716" stroke="#3d444d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1012 268" width="1012" height="268" font-family="Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<path d="M118 238 H730" stroke="#3d444d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 <text x="104.0" y="242.5" text-anchor="end" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#8d96a0">QC</text>
 <path d="M146 238.75 V244.75" stroke="#3d444d" stroke-width="2.5" fill="none"/>
 <text x="146.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">FastQC</text>
 <path d="M352 238.75 V244.75" stroke="#3d444d" stroke-width="2.5" fill="none"/>
 <text x="352.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">FastQC</text>
-<path d="M580 238.75 V244.75" stroke="#3d444d" stroke-width="2.5" fill="none"/>
-<text x="580.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">sample summary</text>
-<path d="M716 238.75 V244.75" stroke="#3d444d" stroke-width="2.5" fill="none"/>
-<text x="716.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">MultiQC</text>
-<path d="M730.00 110.50 L735.00 110.50 Q740.00 110.50 743.54 106.96 L776.10 74.40 Q786.00 64.50 800.00 64.50 L862.00 64.50 Q876.00 64.50 885.90 74.40 L918.46 106.96 Q922.00 110.50 927.00 110.50 L932.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<text x="831.0" y="58.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">SourceTracker2</text>
-<path d="M730.00 110.50 L735.00 110.50 Q740.00 110.50 743.54 106.96 L753.10 97.40 Q763.00 87.50 777.00 87.50 L885.00 87.50 Q899.00 87.50 908.90 97.40 L918.46 106.96 Q922.00 110.50 927.00 110.50 L932.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<text x="831.0" y="81.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">FEAST</text>
-<path d="M740 110.5 H922" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<text x="831.0" y="104.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">FastST</text>
-<path d="M730.00 110.50 L735.00 110.50 Q740.00 110.50 743.54 114.04 L753.10 123.60 Q763.00 133.50 777.00 133.50 L885.00 133.50 Q899.00 133.50 908.90 123.60 L918.46 114.04 Q922.00 110.50 927.00 110.50 L932.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<text x="831.0" y="127.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">SourceID-NMF</text>
-<path d="M730.00 110.50 L735.00 110.50 Q740.00 110.50 743.54 114.04 L776.10 146.60 Q786.00 156.50 800.00 156.50 L862.00 156.50 Q876.00 156.50 885.90 146.60 L918.46 114.04 Q922.00 110.50 927.00 110.50 L932.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<text x="831.0" y="150.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">SourcePredict</text>
-<path d="M716 110.5 H740" stroke="#ad91e6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M922 110.5 H952" stroke="#ad91e6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<text x="831.0" y="180.5" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#ad91e6">Source attribution</text>
-<text x="831.0" y="194.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">optional</text>
+<path d="M614 238.75 V244.75" stroke="#3d444d" stroke-width="2.5" fill="none"/>
+<text x="614.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">sample summary</text>
+<path d="M730 238.75 V244.75" stroke="#3d444d" stroke-width="2.5" fill="none"/>
+<text x="730.0" y="260.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">MultiQC</text>
+<path d="M744.00 110.50 L749.00 110.50 Q754.00 110.50 757.54 106.96 L790.10 74.40 Q800.00 64.50 814.00 64.50 L876.00 64.50 Q890.00 64.50 899.90 74.40 L932.46 106.96 Q936.00 110.50 941.00 110.50 L946.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="845.0" y="58.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">SourceTracker2</text>
+<path d="M744.00 110.50 L749.00 110.50 Q754.00 110.50 757.54 106.96 L767.10 97.40 Q777.00 87.50 791.00 87.50 L899.00 87.50 Q913.00 87.50 922.90 97.40 L932.46 106.96 Q936.00 110.50 941.00 110.50 L946.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="845.0" y="81.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">FEAST</text>
+<path d="M754 110.5 H936" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="845.0" y="104.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">FastST</text>
+<path d="M744.00 110.50 L749.00 110.50 Q754.00 110.50 757.54 114.04 L767.10 123.60 Q777.00 133.50 791.00 133.50 L899.00 133.50 Q913.00 133.50 922.90 123.60 L932.46 114.04 Q936.00 110.50 941.00 110.50 L946.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="845.0" y="127.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">SourceID-NMF</text>
+<path d="M744.00 110.50 L749.00 110.50 Q754.00 110.50 757.54 114.04 L790.10 146.60 Q800.00 156.50 814.00 156.50 L876.00 156.50 Q890.00 156.50 899.90 146.60 L932.46 114.04 Q936.00 110.50 941.00 110.50 L946.00 110.50" stroke="#ad91e6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="845.0" y="150.5" text-anchor="middle" font-size="11" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">SourcePredict</text>
+<path d="M730 110.5 H754" stroke="#ad91e6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M936 110.5 H966" stroke="#ad91e6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text x="845.0" y="180.5" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#ad91e6">Source attribution</text>
+<text x="845.0" y="194.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">optional</text>
 <path d="M118.00 52.50 L198.00 52.50 Q220.00 52.50 235.56 68.06 L257.94 90.44 Q273.50 106.00 295.50 106.00 L352.00 106.00" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 <path d="M118.00 168.50 L198.00 168.50 Q220.00 168.50 235.56 152.94 L257.94 130.56 Q273.50 115.00 295.50 115.00 L352.00 115.00" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 106.00 L344.07 106.00 Q348.14 106.00 351.01 103.12 L368.93 85.20 Q384.14 70.00 405.64 70.00 L566.36 70.00 Q587.86 70.00 603.07 85.20 L620.99 103.12 Q623.86 106.00 627.93 106.00 L632.00 106.00" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 115.00 L345.93 115.00 Q351.86 115.00 356.06 110.81 L369.86 97.00 Q387.86 79.00 413.32 79.00 L558.68 79.00 Q584.14 79.00 602.14 97.00 L615.94 110.81 Q620.14 115.00 626.07 115.00 L632.00 115.00" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 106.00 L345.93 106.00 Q351.86 106.00 356.06 110.19 L372.66 126.80 Q387.86 142.00 409.36 142.00 L562.64 142.00 Q584.14 142.00 599.34 126.80 L615.94 110.19 Q620.14 106.00 626.07 106.00 L632.00 106.00" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 115.00 L344.07 115.00 Q348.14 115.00 351.01 117.88 L366.14 133.00 Q384.14 151.00 409.59 151.00 L562.41 151.00 Q587.86 151.00 605.86 133.00 L620.99 117.88 Q623.86 115.00 627.93 115.00 L632.00 115.00" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M620 106.0 H716" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M620 115.0 H716" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 106.00 L344.07 106.00 Q348.14 106.00 351.01 103.12 L368.93 85.20 Q384.14 70.00 405.64 70.00 L478.36 70.00 Q499.86 70.00 515.07 85.20 L532.99 103.12 Q535.86 106.00 539.93 106.00 L544.00 106.00" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 115.00 L345.93 115.00 Q351.86 115.00 356.06 110.81 L369.86 97.00 Q387.86 79.00 413.32 79.00 L470.68 79.00 Q496.14 79.00 514.14 97.00 L527.94 110.81 Q532.14 115.00 538.07 115.00 L544.00 115.00" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 106.00 L345.93 106.00 Q351.86 106.00 356.06 110.19 L372.66 126.80 Q387.86 142.00 409.36 142.00 L474.64 142.00 Q496.14 142.00 511.34 126.80 L527.94 110.19 Q532.14 106.00 538.07 106.00 L544.00 106.00" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 115.00 L344.07 115.00 Q348.14 115.00 351.01 117.88 L366.14 133.00 Q384.14 151.00 409.59 151.00 L474.41 151.00 Q499.86 151.00 517.86 133.00 L532.99 117.88 Q535.86 115.00 539.93 115.00 L544.00 115.00" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M532 106.0 H730" stroke="#ec8a62" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M532 115.0 H730" stroke="#6aaee6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 <text x="104.0" y="57.0" text-anchor="end" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#ec8a62">Ancient DNA</text>
 <text x="104.0" y="173.0" text-anchor="end" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#6aaee6">Modern DNA</text>
 <path d="M168 50.0 V42.0" stroke="#ec8a62" stroke-width="4.5" fill="none"/>
@@ -41,23 +41,23 @@
 <text x="168.0" y="185.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">trim</text>
 <rect x="344" y="98.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
 <text x="360.0" y="88.5" text-anchor="end" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">BWA</text>
-<text x="360.0" y="137.5" text-anchor="end" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">host removal</text>
-<rect x="612" y="98.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
-<text x="612.0" y="88.5" text-anchor="start" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">Filters</text>
-<text x="612.0" y="137.5" text-anchor="start" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">k-mers, taxa</text>
+<text x="340.0" y="137.5" text-anchor="end" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">host removal</text>
+<rect x="524" y="98.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
+<text x="524.0" y="88.5" text-anchor="start" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">Bracken</text>
+<text x="544.0" y="137.5" text-anchor="start" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">abundance</text>
+<rect x="640" y="98.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
+<text x="648.0" y="88.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">Filters</text>
+<text x="648.0" y="137.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">k-mers, taxa</text>
 <rect x="434" y="62.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
 <text x="442.0" y="52.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">Kraken2</text>
 <text x="442.0" y="101.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">classification</text>
-<rect x="522" y="62.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
-<text x="530.0" y="52.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">Bracken</text>
-<text x="530.0" y="101.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">abundance</text>
-<rect x="478" y="134.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
-<text x="486.0" y="173.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">KrakenUniq</text>
-<text x="486.0" y="187.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">instead of both</text>
-<rect x="708" y="98.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
-<text x="716.0" y="88.5" text-anchor="middle" font-size="13" font-weight="650" letter-spacing="-0.1" fill="#e6edf3">Count table</text>
-<rect x="944" y="102.5" width="16" height="16" rx="8" fill="#e6edf3" stroke="#ad91e6" stroke-width="2.4"/>
-<text x="952.0" y="88.5" text-anchor="middle" font-size="13" font-weight="650" letter-spacing="-0.1" fill="#e6edf3">Comparison</text>
-<text x="952.0" y="133.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">cross-validated</text>
-<text x="952.0" y="147.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">by study</text>
+<rect x="434" y="134.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
+<text x="442.0" y="173.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#e6edf3">KrakenUniq</text>
+<text x="442.0" y="187.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">or instead</text>
+<rect x="722" y="98.50" width="16" height="24" rx="8" fill="#e6edf3" stroke="#0d1117" stroke-width="2.4"/>
+<text x="730.0" y="88.5" text-anchor="middle" font-size="13" font-weight="650" letter-spacing="-0.1" fill="#e6edf3">Count table</text>
+<rect x="958" y="102.5" width="16" height="16" rx="8" fill="#e6edf3" stroke="#ad91e6" stroke-width="2.4"/>
+<text x="966.0" y="88.5" text-anchor="middle" font-size="13" font-weight="650" letter-spacing="-0.1" fill="#e6edf3">Comparison</text>
+<text x="966.0" y="133.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">cross-validated</text>
+<text x="966.0" y="147.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#8d96a0">by study</text>
 </svg>

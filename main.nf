@@ -32,8 +32,7 @@ workflow {
 
     def methods = splitList(params.attribution_methods)
     def database = resolveDatabase()
-    def countTable = isOn(params.run_kraken2) && (isOn(params.run_bracken) || params.classifier == 'krakenuniq')
-    def taxdumpNodes = countTable && params.taxon_filter == 'prokaryote'
+    def taxdumpNodes = isOn(params.run_kraken2) && params.taxon_filter == 'prokaryote'
         ? taxdumpFile(params.taxdump, 'nodes.dmp', 'taxon_filter=prokaryote')
         : file("${projectDir}/assets/no_taxdump.nodes.dmp", checkIfExists: true)
 
@@ -57,18 +56,16 @@ workflow {
         PROFILE(PREPROCESS.out.reads, metadata, channel.value(database), channel.value(taxdumpNodes))
         qc_files = qc_files.mix(PROFILE.out.qc)
 
-        if (countTable) {
-            // One row per sample: molecules kept by each step, and depth flags.
-            SUMMARIZE_SAMPLES(
-                metadata,
-                PROFILE.out.sample_qc,
-                PREPROCESS.out.step_counts
-                    .filter { qc -> qc.name ==~ /.+\.(fastp\.json|adapterremoval\.log|adapterremoval\.fragment_qc\.tsv|host_removal\.fragment_qc\.tsv)/ }
-                    .toSortedList { a, b -> a.name <=> b.name },
-                binScript('summarize_samples.py')
-            )
-            qc_files = qc_files.mix(SUMMARIZE_SAMPLES.out.multiqc)
-        }
+        // One row per sample: molecules kept by each step, and depth flags.
+        SUMMARIZE_SAMPLES(
+            metadata,
+            PROFILE.out.sample_qc,
+            PREPROCESS.out.step_counts
+                .filter { qc -> qc.name ==~ /.+\.(fastp\.json|adapterremoval\.log|adapterremoval\.fragment_qc\.tsv|host_removal\.fragment_qc\.tsv)/ }
+                .toSortedList { a, b -> a.name <=> b.name },
+            binScript('summarize_samples.py')
+        )
+        qc_files = qc_files.mix(SUMMARIZE_SAMPLES.out.multiqc)
 
         if (methods) {
             ATTRIBUTION(
@@ -151,7 +148,7 @@ def checkParameters() {
     rejectReservedArgs('bracken_extra_args', params.bracken_extra_args, ['-d', '-i', '-o', '-w', '-r', '-l', '-t'])
 
     if (isOn(params.run_bracken) && !isOn(params.run_kraken2)) {
-        error 'run_bracken requires run_kraken2'
+        error 'run_bracken requires classification (run_kraken2)'
     }
     if ((params.kraken2_min_distinct_minimizers as int) > 0 && !isOn(params.kraken2_report_minimizer_data)) {
         error 'kraken2_min_distinct_minimizers needs kraken2_report_minimizer_data = true'
@@ -161,8 +158,8 @@ def checkParameters() {
     if (methods - known) {
         error "Unknown attribution method(s): ${(methods - known).join(', ')}. Choose from ${known.join(', ')}."
     }
-    if (methods && !(isOn(params.run_bracken) || params.classifier == 'krakenuniq')) {
-        error 'Source attribution needs a count table: with Kraken2, set run_bracken = true'
+    if (methods && !isOn(params.run_kraken2)) {
+        error 'Source attribution needs the count table, so classification must run (run_kraken2)'
     }
     if (!(params.attribution_label ==~ /[A-Za-z0-9][A-Za-z0-9._-]*/)) {
         error "Parameter 'attribution_label' must be filesystem-safe"
@@ -188,8 +185,12 @@ def resolveDatabase() {
         if (isArchive(params.krakenuniq_db)) {
             return file(params.krakenuniq_db, checkIfExists: true)
         }
-        return requireDirectory('krakenuniq_db', params.krakenuniq_db, ['database.kdb', 'database.idx', 'taxDB'],
+        def directory = requireDirectory('krakenuniq_db', params.krakenuniq_db, ['database.kdb', 'database.idx', 'taxDB'],
             'It should point at a KrakenUniq database, such as one built with krakenuniq-build.')
+        if (isOn(params.run_bracken)) {
+            requireBrackenDistributions(directory, 'krakenuniq')
+        }
+        return directory
     }
     def hint = 'It should point at a Kraken2 database; prebuilt ones are listed at https://benlangmead.github.io/aws-indexes/k2'
     if (params.bracken_db && params.bracken_db != params.kraken2_db) {
@@ -207,7 +208,7 @@ def resolveDatabase() {
     }
     def directory = requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'], hint)
     if (isOn(params.run_bracken)) {
-        requireBrackenDistributions(directory)
+        requireBrackenDistributions(directory, 'kraken2')
     }
     return directory
 }

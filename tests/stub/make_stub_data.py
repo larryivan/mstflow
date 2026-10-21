@@ -73,7 +73,7 @@ def main():
     (KRAKEN_DIR / "database75mers.kmer_distrib").write_text("mstflow stub distribution\n")
     krakenuniq = TEST_DIR / "krakenuniq_stub_db"
     krakenuniq.mkdir(parents=True, exist_ok=True)
-    for filename in ("database.kdb", "database.idx", "taxDB"):
+    for filename in ("database.kdb", "database.idx", "taxDB", "database75mers.kmer_distrib"):
         (krakenuniq / filename).write_text("mstflow stub database\n")
 
     write_fastq(

@@ -13,10 +13,10 @@ MAX_COUNT_DIGITS = 38
 ROOT_TAXIDS = {"0", "1"}
 BRACKEN_SUFFIXES = (".bracken.tsv", ".bracken.txt", ".tsv", ".txt")
 MINIMIZER_SUFFIXES = (".kraken2.minimizer.report.txt",)
-KRAKENUNIQ_SUFFIXES = (".krakenuniq.report.txt",)
 RANK_WORDS = {"D": ("superkingdom", "domain"), "P": ("phylum",), "C": ("class",), "O": ("order",),
               "F": ("family",), "G": ("genus",), "S": ("species",)}
 KRAKEN_SUFFIXES = (
+    ".krakenuniq.report.txt",
     ".kraken2.report.txt",
     ".bracken.report.txt",
     ".k2.report",
@@ -139,44 +139,69 @@ def read_bracken(path):
     return sample, counts, features
 
 
-def read_kraken_report(path):
+def read_kraken_report(path, rank="G"):
+    """Read a Kraken2 or KrakenUniq report.
+
+    Returns the sample, its classified and unclassified totals, its clade read counts
+    at `rank` (used when Bracken does not run), their features, and, for KrakenUniq,
+    the unique k-mers each taxon's reads cover (None for Kraken2, whose distinct
+    minimizers come in a separate report). Kraken2 rows are percent, clade reads, taxon
+    reads, rank code, taxid, name; KrakenUniq rows, after a header, are %, reads,
+    taxReads, kmers, dup, cov, taxID, rank, taxName.
+    """
     sample = id_from_path(path, KRAKEN_SUFFIXES)
-    classified = None
-    unclassified = None
-    classified_percent = None
-    unclassified_percent = None
+    totals, percents = {}, {}
+    counts, features = {}, {}
+    distinct = None
+    header = None
     with open(path) as handle:
         for line_no, line in enumerate(handle, start=1):
-            if not line.strip():
+            if not line.strip() or line.startswith("#"):
                 continue
             parts = line.rstrip("\n").split("\t")
-            if len(parts) < 6:
-                raise SystemExit(f"{path}:{line_no}: expected at least six Kraken report columns")
-            clade_reads = exact_count(parts[1].strip(), f"{path}:{line_no}:clade_reads")
-            percent = finite_nonnegative(parts[0].strip(), f"{path}:{line_no}:percent")
-            rank = parts[3].strip()
-            taxid = parts[4].strip()
-            if rank == "U" or taxid == "0":
-                unclassified = clade_reads
-                unclassified_percent = percent
-            elif rank == "R" and taxid == "1":
-                classified = clade_reads
-                classified_percent = percent
-    # Kraken legitimately omits the root row for an all-unclassified sample,
-    # and may omit the U row for a fully classified sample.
-    if classified is None and unclassified is not None and unclassified_percent >= 99.999:
+            if parts[:2] == ["%", "reads"]:
+                if "taxID" not in parts or "kmers" not in parts:
+                    raise SystemExit(f"{path}:{line_no}: not a KrakenUniq report header")
+                header, distinct = parts, {}
+                continue
+            if header:
+                row = dict(zip(header, parts))
+                percent, clade_reads = row["%"], row["reads"]
+                taxid, name, rank_name = row["taxID"].strip(), row["taxName"].strip(), row["rank"].strip()
+                at_rank = rank_name in RANK_WORDS[rank]
+                distinct[taxid] = exact_count(row["kmers"].strip(), f"{path}:{line_no}:kmers")
+            else:
+                if len(parts) < 6:
+                    raise SystemExit(f"{path}:{line_no}: expected at least six Kraken report columns")
+                # Six columns, or eight with minimizer data; both end in rank, taxid, name.
+                percent, clade_reads = parts[0], parts[1]
+                rank_code, taxid, name = parts[-3].strip(), parts[-2].strip(), parts[-1].strip()
+                at_rank = rank_code == rank
+                if rank_code == "U":
+                    taxid = "0"
+            reads = exact_count(clade_reads.strip(), f"{path}:{line_no}:clade_reads")
+            if taxid in ("0", "1"):
+                totals[taxid] = reads
+                percents[taxid] = finite_nonnegative(percent.strip(), f"{path}:{line_no}:percent")
+            elif at_rank:
+                fid = feature_id(taxid, name)
+                counts[fid] = counts.get(fid, 0) + reads
+                features[fid] = {"feature_id": fid, "taxid": taxid, "name": name, "rank": rank}
+    # Kraken legitimately omits the root row for an all-unclassified sample, and may
+    # omit the unclassified row for a fully classified sample.
+    unclassified, classified = totals.get("0"), totals.get("1")
+    if classified is None and unclassified is not None and percents["0"] >= 99.999:
         classified = 0
-    if unclassified is None and classified is not None and classified_percent >= 99.999:
+    if unclassified is None and classified is not None and percents["1"] >= 99.999:
         unclassified = 0
     if classified is None or unclassified is None:
-        raise SystemExit(
-            f"{path}: Kraken report must contain unclassified (taxid 0) and root (taxid 1) rows"
-        )
-    return sample, {
+        raise SystemExit(f"{path}: Kraken report must contain unclassified (taxid 0) and root (taxid 1) rows")
+    metrics = {
         "kraken_total_reads": classified + unclassified,
         "kraken_classified_reads": classified,
         "kraken_unclassified_reads": unclassified,
     }
+    return sample, metrics, counts, features, distinct
 
 
 def read_minimizer_report(path):
@@ -194,43 +219,6 @@ def read_minimizer_report(path):
                 raise SystemExit(f"{path}:{line_no}: expected the eight columns of a Kraken2 report with minimizer data")
             distinct[parts[6].strip()] = exact_count(parts[4].strip(), f"{path}:{line_no}:distinct_minimizers")
     return sample, distinct
-
-
-def read_krakenuniq_report(path, rank):
-    """Clade read counts at one rank, unique k-mers per taxid, and the classified and
-    unclassified totals, from a KrakenUniq report (%, reads, taxReads, kmers, dup, cov,
-    taxID, rank, taxName; the reads and k-mers columns count the whole clade)."""
-    sample = id_from_path(path, KRAKENUNIQ_SUFFIXES)
-    counts, features, distinct = {}, {}, {}
-    totals = {"0": None, "1": None}
-    header = None
-    with open(path) as handle:
-        for line_no, line in enumerate(handle, start=1):
-            if not line.strip() or line.startswith("#"):
-                continue
-            parts = line.rstrip("\n").split("\t")
-            if header is None:
-                header = parts
-                if parts[:2] != ["%", "reads"] or "taxID" not in parts or "kmers" not in parts:
-                    raise SystemExit(f"{path}:{line_no}: not a KrakenUniq report header")
-                continue
-            row = dict(zip(header, parts))
-            taxid = row["taxID"].strip()
-            reads = exact_count(row["reads"].strip(), f"{path}:{line_no}:reads")
-            distinct[taxid] = exact_count(row["kmers"].strip(), f"{path}:{line_no}:kmers")
-            if taxid in totals:
-                totals[taxid] = reads
-            if row["rank"].strip() in RANK_WORDS[rank]:
-                name = row["taxName"].strip()
-                fid = feature_id(taxid, name)
-                counts[fid] = counts.get(fid, 0) + reads
-                features[fid] = {"feature_id": fid, "taxid": taxid, "name": name, "rank": rank}
-    if header is None:
-        raise SystemExit(f"{path}: empty KrakenUniq report")
-    unclassified, classified = totals["0"] or 0, totals["1"] or 0
-    metrics = {"kraken_total_reads": classified + unclassified, "kraken_classified_reads": classified,
-               "kraken_unclassified_reads": unclassified}
-    return sample, counts, features, distinct, metrics
 
 
 def filter_by_distinct_kmers(counts, features, distinct_by_sample, min_distinct, min_reads):
@@ -444,7 +432,8 @@ def write_sample_qc(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Build complete Bracken feature tables with optional Kraken and lineage QC."
+        description="Build the count tables from Bracken estimates or, without them, from the "
+                    "classifier's clade counts, with classification and lineage QC."
     )
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--prefix", required=True)
@@ -455,7 +444,8 @@ def main():
         "--kraken-reports",
         nargs="+",
         default=None,
-        help="Corresponding per-sample Kraken reports; when supplied, coverage must be 1:1.",
+        help="Per-sample Kraken2 or KrakenUniq reports, one per sample: classification totals, "
+             "KrakenUniq's unique k-mers, and the counts themselves when no Bracken tables are given.",
     )
     parser.add_argument(
         "--minimizer-reports",
@@ -463,14 +453,8 @@ def main():
         default=None,
         help="Per-sample Kraken2 reports with minimizer data, for --min-distinct-kmers.",
     )
-    parser.add_argument(
-        "--krakenuniq-reports",
-        nargs="+",
-        default=None,
-        help="Per-sample KrakenUniq reports, used instead of Bracken tables.",
-    )
     parser.add_argument("--rank", choices=sorted(RANK_WORDS), default="G",
-                        help="Rank of the KrakenUniq counts (Bracken tables carry their own).")
+                        help="Rank of the counts taken from the reports when no Bracken tables are given.")
     parser.add_argument(
         "--min-distinct-kmers",
         type=int,
@@ -482,8 +466,8 @@ def main():
                         help="Drop a taxon from a sample when it has fewer reads (0: keep all).")
     parser.add_argument("bracken_files", nargs="*")
     args = parser.parse_args()
-    if bool(args.bracken_files) == bool(args.krakenuniq_reports):
-        raise SystemExit("give either Bracken tables or --krakenuniq-reports")
+    if not args.bracken_files and not args.kraken_reports:
+        raise SystemExit("give Bracken tables, or --kraken-reports to count from the reports")
 
     metadata_fields, samples, metadata = read_metadata(args.metadata)
     counts = {}
@@ -501,31 +485,32 @@ def main():
 
     # Sorted so the table is byte-identical regardless of the order in which
     # the workflow hands over per-sample tables.
-    if args.krakenuniq_reports:
-        for path in sorted(args.krakenuniq_reports, key=lambda value: Path(value).name):
-            sample, sample_counts, sample_features, distinct, metrics = read_krakenuniq_report(path, args.rank)
-            add_counts(sample, sample_counts, sample_features)
+    reports = {}
+    for path in sorted(args.kraken_reports or [], key=lambda value: Path(value).name):
+        sample, metrics, report_counts, report_features, distinct = read_kraken_report(path, args.rank)
+        if sample in reports:
+            raise SystemExit(f"duplicate Kraken report for sample {sample}")
+        reports[sample] = (report_counts, report_features)
+        kraken_metrics[sample] = metrics
+        if distinct is not None:
             distinct_by_sample[sample] = distinct
-            kraken_metrics[sample] = metrics
-        require_one_to_one(samples, observed, "KrakenUniq report")
-    else:
+    if reports:
+        require_one_to_one(samples, list(reports), "Kraken report")
+    if args.bracken_files:
         for path in sorted(args.bracken_files, key=lambda value: Path(value).name):
             add_counts(*read_bracken(path))
         require_one_to_one(samples, observed, "Bracken table")
-        if args.kraken_reports:
-            kraken_observed = []
-            for path in args.kraken_reports:
-                sample, metrics = read_kraken_report(path)
-                kraken_observed.append(sample)
-                kraken_metrics[sample] = metrics
-            require_one_to_one(samples, kraken_observed, "Kraken report")
-        if args.min_distinct_kmers > 0:
-            if not args.minimizer_reports:
-                raise SystemExit("--min-distinct-kmers with Bracken tables needs --minimizer-reports")
-            for path in args.minimizer_reports:
-                sample, distinct = read_minimizer_report(path)
-                distinct_by_sample[sample] = distinct
-            require_one_to_one(samples, list(distinct_by_sample), "Kraken2 minimizer report")
+    else:
+        for sample in sorted(reports):
+            add_counts(sample, *reports[sample])
+    if args.minimizer_reports:
+        distinct_by_sample = {}
+        for path in args.minimizer_reports:
+            sample, distinct = read_minimizer_report(path)
+            distinct_by_sample[sample] = distinct
+        require_one_to_one(samples, list(distinct_by_sample), "Kraken2 minimizer report")
+    if args.min_distinct_kmers > 0 and not distinct_by_sample:
+        raise SystemExit("--min-distinct-kmers needs KrakenUniq reports or, for Kraken2, --minimizer-reports")
 
     filtering = args.min_distinct_kmers > 0 or args.min_taxon_reads > 0
     removed = []

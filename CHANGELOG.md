@@ -12,8 +12,9 @@ First public release.
 - Cross-validation of every method on the sources (`--attribution_cv`): the sources of
   one study at a time are held out as sinks of known origin, and each method's coverage
   and accuracy on them are reported.
-- KrakenUniq as an alternative classifier (`--classifier krakenuniq`), with aMeta's
-  unique k-mer and read thresholds.
+- KrakenUniq as an alternative to Kraken2 (`--classifier krakenuniq`), with aMeta's
+  unique k-mer and read thresholds. Bracken follows either classifier; with
+  `--run_bracken false` the tables hold the classifier's own clade counts.
 - `--kraken2_min_distinct_minimizers` removes taxa whose reads cover too few distinct
   minimizers, sample by sample, and lists what it removed.
 - `-profile test` runs every step, all attribution methods and their cross-validation
