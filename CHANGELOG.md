@@ -51,6 +51,9 @@ First public release.
 - The `docker` profile runs the `linux/amd64` images on any host, including ARM.
 - One minimum read length, `--min_length` (35 bp), for ancient and modern libraries
   alike, in place of `--min_length_ancient` and `--min_length_modern` (50 bp).
+- `--sourcetracker2_alpha2` defaults to 0.1, the default of the original SourceTracker,
+  instead of the 0.001 of SourceTracker2 2.0.1, with which the unknown source can
+  absorb sinks that clearly match a source.
 - The workflow is split into preprocessing, profiling and attribution subworkflows.
 - SourceTracker2 options are now attribution options (`--attribution_*`) shared by
   every method, and its priors and sampling settings are parameters

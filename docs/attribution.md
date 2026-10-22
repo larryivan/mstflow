@@ -99,16 +99,17 @@ paper reports.
 
 ## Known behaviour of each method
 
-**SourceTracker2.** Its default prior on the unknown source (`--sourcetracker2_alpha2
-0.001`) lets the unknown source take on the composition of the sink itself. When a sink
-holds only a few dozen taxa and part of it is poorly represented in the sources, the
-unknown share can grow from that part to absorb the whole sink, including taxa that
-match a source closely. The original SourceTracker used `alpha2 = 0.1`, which keeps the
-unknown source close to uniform. In MSTFlow's test data, with about twenty genera per
-sink, the default put 94% of the ancient calculus and 96% of the paleosoil into the
-unknown source; with 0.1, 98% of the calculus went to the oral sources and 91% of the
-paleosoil to soil, and SourceTracker2 was right on 86% of held-out sources. Profiles with
-few taxa, from small databases or shallow libraries, are where this matters; check it
+**SourceTracker2.** `--sourcetracker2_alpha2` is the prior on the unknown source, as a
+fraction of each sink's counts. MSTFlow uses 0.1, the default of the original
+SourceTracker and of SourceTracker2's source code; the 2.0.1 release on Bioconda uses
+0.001. With 0.001 the unknown source can take on the composition of the sink itself:
+when a sink holds only a few dozen taxa and part of it is poorly represented in the
+sources, the unknown share grows from that part to absorb the whole sink, including taxa
+that match a source closely. In MSTFlow's test data, with about twenty genera per sink,
+0.001 put 94% of the ancient calculus and 96% of the paleosoil into the unknown source;
+with 0.1, 98% of the calculus went to the oral sources and 91% of the paleosoil to soil,
+and SourceTracker2 was right on 86% of held-out sources. Profiles with few taxa, from
+small databases or shallow libraries, are where this matters; check it
 with cross-validation.
 
 **FEAST** chooses one rarefaction depth for all sinks (`--feast_coverage`; by default

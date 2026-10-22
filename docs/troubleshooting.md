@@ -38,9 +38,10 @@ Expected on Apple Silicon and other ARM machines: the images are `linux/amd64` a
 under emulation. It works, only more slowly.
 
 **SourceTracker2 assigns nearly every sink to Unknown**
-With few taxa per sink, SourceTracker2's default prior lets its unknown source absorb
-sinks that clearly match a source. Try `--sourcetracker2_alpha2 0.1` and compare the
-cross-validation scores; see [source attribution](attribution.md#known-behaviour-of-each-method).
+With few taxa per sink, a small prior on the unknown source lets it absorb sinks that
+clearly match a source. Check that `--sourcetracker2_alpha2` has not been lowered from
+0.1, and compare the cross-validation scores; see
+[source attribution](attribution.md#known-behaviour-of-each-method).
 
 **`SourcePredict needs at least two source libraries per environment`**
 SourcePredict learns from individual source libraries. Add sources, merge rare

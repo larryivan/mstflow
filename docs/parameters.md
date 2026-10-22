@@ -150,7 +150,7 @@ hidden from `--help` unless `--showHidden` is given.
 |---|---|---|---|
 | `--sourcetracker2_source_rarefaction_depth` | Rarefy pooled sources to this depth (0: no rarefaction). | integer | `1000` |
 | `--sourcetracker2_sink_rarefaction_depth` | Rarefy sinks to this depth (0: no rarefaction). | integer | `1000` |
-| `--sourcetracker2_alpha2` | Prior on the unknown source. SourceTracker2's default. With few taxa per sink the unknown source can absorb sinks that clearly match a source; 0.1, the default of the original SourceTracker, guards against that. See docs/attribution.md. | number | `0.001` |
+| `--sourcetracker2_alpha2` | Prior on the unknown source, as a fraction of each sink's counts. 0.1 is the default of the original SourceTracker and of SourceTracker2's source code; the 2.0.1 release uses 0.001, with which the unknown source can absorb sinks that clearly match a source. See docs/attribution.md. | number | `0.1` |
 
 <details><summary>Advanced</summary>
 

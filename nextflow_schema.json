@@ -501,10 +501,10 @@
                 },
                 "sourcetracker2_alpha2": {
                     "type": "number",
-                    "description": "Prior on the unknown source.",
-                    "default": 0.001,
+                    "description": "Prior on the unknown source, as a fraction of each sink's counts.",
+                    "default": 0.1,
                     "exclusiveMinimum": 0,
-                    "help_text": "SourceTracker2's default. With few taxa per sink the unknown source can absorb sinks that clearly match a source; 0.1, the default of the original SourceTracker, guards against that. See docs/attribution.md."
+                    "help_text": "0.1 is the default of the original SourceTracker and of SourceTracker2's source code; the 2.0.1 release uses 0.001, with which the unknown source can absorb sinks that clearly match a source. See docs/attribution.md."
                 },
                 "sourcetracker2_alpha1": {
                     "type": "number",
