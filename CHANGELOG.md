@@ -22,9 +22,10 @@ First public release.
 - `--kraken2_min_distinct_minimizers` removes taxa whose reads cover too few distinct
   minimizers, sample by sample, and lists what it removed.
 - `-profile test` runs every step, all attribution methods and their cross-validation
-  included, on excerpts of 15 published ancient and modern libraries with a 274-genome
-  Kraken2/Bracken database, downloaded from a release asset (about 1.9 GB). The recipe
-  is in `assets/test`.
+  included, on excerpts of 18 published ancient and modern libraries and three sinks
+  mixed from them in known shares, with a 274-genome Kraken2/Bracken database,
+  downloaded from a release asset (about 1.9 GB). The recipe is in `assets/test`, and
+  `assets/test/check_mixtures.py` checks the mixtures' estimates.
 - `--kraken2_db` accepts a `.tar.gz` archive, local or a URL, such as the prebuilt
   indexes, and unpacks it. The samplesheet, reads, host genome and taxdump can also be
   URLs.

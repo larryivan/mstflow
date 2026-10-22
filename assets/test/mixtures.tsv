@@ -1,0 +1,7 @@
+mixture	library	environment	share	ancient
+mix_oral_gut	plaque	oral	0.5	no
+mix_oral_gut	faeces	gut	0.5	no
+mix_oral_gut_ancient	plaque	oral	0.5	yes
+mix_oral_gut_ancient	faeces	gut	0.5	yes
+mix_gut_soil	faeces	gut	0.1	no
+mix_gut_soil	meadow_soil	soil	0.9	no

@@ -44,7 +44,8 @@ nextflow run larryivan/mstflow -profile test,docker
 ```
 
 This runs every step, authentication and all five attribution methods with their
-cross-validation included, on excerpts of 15 published ancient and modern libraries.
+cross-validation included, on excerpts of 18 published ancient and modern libraries
+and three sinks mixed from them in known shares.
 The first run downloads about 1.9 GB of test data and the containers; the run itself
 takes about 15 minutes on a laptop. [The test data](assets/test/README.md)
 

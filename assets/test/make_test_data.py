@@ -6,6 +6,8 @@
 - taxonomy: the NCBI lineages of those genomes, cut from the current taxdump (nodes.dmp,
   names.dmp, and an empty merged.dmp, which SourcePredict's taxonomy reader expects)
 - host: the human mitochondrial genome (NC_012920.1)
+- mixtures: sinks of known composition, made from the reads of the libraries in
+  mixtures.tsv (see that section of README.md)
 - samplesheet.tsv, pointing at the reads by file name
 
 Then run build_test_db.sh to build the Kraken2/Bracken database and the release files.
@@ -14,6 +16,8 @@ Only the Python standard library is used.
 import csv
 import gzip
 import io
+import math
+import random
 import sys
 import tarfile
 import time
@@ -24,6 +28,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 BUILD = HERE / "build"
 READS_PER_LIBRARY = 50_000
+ADAPTERS = ("AGATCGGAAGAGCACACGTCTGAACTCCAGTCACNNNNNNATCTCGTATGCCGTCTTCTGCTTG",
+            "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT")
+COMPLEMENT = str.maketrans("ACGTN", "TGCAN")
 
 
 def fetch(url, timeout=300):
@@ -77,6 +84,67 @@ def reads(libraries):
         print(f"reads   {lib['sample_id']:10s} {lib['run']}", flush=True)
         rows.append([lib["sample_id"], files[0], files[1] if len(files) > 1 else "", lib["age_group"],
                      lib["host_action"], lib["source_sink"], lib["model_source_env"], lib["project"], lib["run"]])
+    return rows
+
+
+def fastq(path):
+    with gzip.open(path, "rt") as handle:
+        while True:
+            record = [handle.readline().rstrip("\n") for _ in range(4)]
+            if not record[3]:
+                return
+            yield record
+
+
+def ancient_like(read1, rng):
+    """An ancient-like molecule from a modern read 1: its first bases, cut to a length
+    typical of ancient DNA (median 65 bp) and deaminated at both ends, sequenced as a pair
+    at the original read length so that both reads run into the adapters."""
+    header, sequence, _, quality = read1
+    length = min(len(sequence), max(30, round(rng.lognormvariate(math.log(65), 0.35))))
+    bases = list(sequence[:length])
+    for i in range(length):
+        p = 0.30 * 0.55 ** i
+        if p < 0.001:
+            break
+        if bases[i] == "C" and rng.random() < p:
+            bases[i] = "T"
+        if bases[-1 - i] == "G" and rng.random() < p:
+            bases[-1 - i] = "A"
+    fragment, size = "".join(bases), len(sequence)
+    name = header.split()[0].removesuffix("/1")
+    return ([f"{name}/1", (fragment + ADAPTERS[0] + "A" * size)[:size], "+", quality],
+            [f"{name}/2", (fragment[::-1].translate(COMPLEMENT) + ADAPTERS[1] + "A" * size)[:size], "+", quality[::-1]])
+
+
+def mixtures(libraries):
+    """Each mixture takes its share of read pairs from the start of each library in it."""
+    out = BUILD / "reads"
+    by_id = {lib["sample_id"]: lib for lib in libraries}
+    parts = {}
+    for part in csv.DictReader(open(HERE / "mixtures.tsv"), delimiter="\t"):
+        parts.setdefault(part["mixture"], []).append(part)
+    rows = []
+    for mixture, components in parts.items():
+        rng = random.Random(mixture)
+        ancient = components[0]["ancient"] == "yes"
+        pairs = []
+        for part in components:
+            mates = zip(fastq(out / f"{part['library']}_R1.fastq.gz"), fastq(out / f"{part['library']}_R2.fastq.gz"))
+            for _, (read1, read2) in zip(range(round(float(part["share"]) * READS_PER_LIBRARY)), mates):
+                pairs.append(ancient_like(read1, rng) if ancient else (read1, read2))
+        names = [f"{mixture}_R{i}.fastq.gz" for i in (1, 2)]
+        for mate, name in enumerate(names):
+            with gzip.GzipFile(out / name, "wb", mtime=0) as handle:
+                handle.write("".join("\n".join(pair[mate]) + "\n" for pair in pairs).encode())
+        removes_host = any(by_id[part["library"]]["host_action"] == "remove" for part in components)
+        print(f"mixture {mixture:10s} " + ", ".join(f"{p['library']} {p['share']}" for p in components), flush=True)
+        rows.append([mixture, *names, "ancient" if ancient else "modern", "remove" if removes_host else "skip",
+                     "sink", "NA", "NA", ""])
+    return rows
+
+
+def samplesheet(rows):
     with open(BUILD / "samplesheet.tsv", "w") as fh:
         fh.write("sample_id\tfastq_1\tfastq_2\tage_group\thost_action\tsource_sink\tmodel_source_env\tproject\trun\n")
         fh.writelines("\t".join(r) + "\n" for r in rows)
@@ -132,7 +200,7 @@ def main():
     BUILD.mkdir(exist_ok=True)
     libraries = list(csv.DictReader(open(HERE / "libraries.tsv"), delimiter="\t"))
     pinned = list(csv.DictReader(open(HERE / "genomes.tsv"), delimiter="\t"))
-    reads(libraries)
+    samplesheet(reads(libraries) + mixtures(libraries))
     host()
     taxonomy(pinned)
     genomes(pinned)

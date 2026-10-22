@@ -14,3 +14,6 @@ calculus	ERR10114857	PRJEB55583	PE	ancient	remove	sink	NA	dental calculus
 coprolite	ERR5766170	PRJEB44507	PE	ancient	remove	sink	NA	human paleofaeces
 sediment	ERR13348407	PRJEB77295	SE	ancient	skip	sink	NA	paleosoil
 bone	ERR1777568	PRJEB18722	SE	ancient	remove	sink	NA	human bone
+plaque	ERR589346	PRJEB6997	PE	modern	remove	sink	NA	dental plaque
+faeces	ERR589441	PRJEB6997	PE	modern	remove	sink	NA	faeces
+meadow_soil	SRR2546422	PRJNA297196	PE	modern	skip	sink	NA	meadow soil
