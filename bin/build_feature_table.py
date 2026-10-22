@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Build the count tables from each sample's Kraken2 or KrakenUniq report: the reads
+the classifier placed in each taxon of one rank or below it, merged across samples,
+before and after the taxon filter, with classification and lineage QC.
+
+Each read is classified on its own, so a sample's counts are the sum of what its reads
+contribute, and a sink made of two sources gets the sum of their counts.
+"""
 import argparse
 import csv
 import math
@@ -93,41 +100,11 @@ def format_count(value):
     return "NA" if value is None else str(int(value))
 
 
-def read_bracken(path):
-    sample = id_from_path(path, ".bracken.tsv")
-    counts = {}
-    features = {}
-    with open(path, newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t")
-        required = {"name", "taxonomy_id", "taxonomy_lvl", "new_est_reads"}
-        missing = required.difference(reader.fieldnames or [])
-        if missing:
-            raise SystemExit(f"{path} is missing Bracken column(s): {', '.join(sorted(missing))}")
-        for line_no, row in enumerate(reader, start=2):
-            taxid = (row["taxonomy_id"] or "").strip()
-            name = (row["name"] or "").strip()
-            if not taxid or not name:
-                raise SystemExit(f"{path}:{line_no}: taxonomy_id and name are required")
-            fid = feature_id(taxid, name)
-            count = exact_count(
-                row["new_est_reads"],
-                f"{path}:{line_no}:new_est_reads (sample {sample})",
-            )
-            counts[fid] = counts.get(fid, 0) + count
-            features[fid] = {
-                "feature_id": fid,
-                "taxid": taxid,
-                "name": name,
-                "rank": (row["taxonomy_lvl"] or "").strip(),
-            }
-    return sample, counts, features
-
-
 def read_kraken_report(path, rank="G"):
     """Read a Kraken2 or KrakenUniq report.
 
     Returns the sample, its classified and unclassified totals, its clade read counts
-    at `rank` (used when Bracken does not run), their features, and, for KrakenUniq,
+    at `rank`, their features, and, for KrakenUniq,
     the unique k-mers each taxon's reads cover (None for Kraken2, whose distinct
     minimizers come in a separate report). Kraken2 rows are percent, clade reads, taxon
     reads, rank code, taxid, name; KrakenUniq rows, after a header, are %, reads,
@@ -205,9 +182,9 @@ def read_minimizer_report(path):
     return sample, distinct
 
 
-def filter_by_distinct_kmers(counts, features, distinct_by_sample, min_distinct, min_reads):
-    """Zero, sample by sample, every taxon with fewer than `min_reads` reads or whose
-    reads cover fewer than `min_distinct` distinct k-mers of its genomes.
+def filter_by_distinct_kmers(counts, features, distinct_by_sample, min_distinct):
+    """Zero, sample by sample, every taxon whose reads cover fewer than `min_distinct`
+    distinct k-mers of its genomes.
 
     Reads piled on a few short stretches of a genome (a conserved gene, a low-complexity
     region, a contaminant fragment in the reference) give many reads but few distinct
@@ -220,7 +197,7 @@ def filter_by_distinct_kmers(counts, features, distinct_by_sample, min_distinct,
         taxid = features[fid]["taxid"]
         for sample, count in sorted(counts[fid].items()):
             distinct = distinct_by_sample[sample].get(taxid, 0)
-            if count and (distinct < min_distinct or count < min_reads):
+            if count and distinct < min_distinct:
                 removed.append([sample, fid, features[fid]["name"], format_count(count), format_count(distinct)])
                 counts[fid][sample] = 0
     return removed
@@ -361,8 +338,8 @@ def write_sample_qc(
         "kraken_classified_reads",
         "kraken_unclassified_reads",
         "kraken_classified_fraction",
-        "bracken_total_reads",
-        "bracken_fraction_of_kraken_classified",
+        "rank_total_reads",
+        "rank_fraction_of_classified",
         "taxon_filter_retained_reads",
         "taxon_filter_retained_fraction",
         "raw_nonzero_features",
@@ -387,8 +364,8 @@ def write_sample_qc(
                     "kraken_classified_fraction": format_value(
                         ratio(classified, total) if classified is not None and total is not None else None
                     ),
-                    "bracken_total_reads": format_count(raw_total),
-                    "bracken_fraction_of_kraken_classified": format_value(
+                    "rank_total_reads": format_count(raw_total),
+                    "rank_fraction_of_classified": format_value(
                         ratio(raw_total, classified) if classified is not None else None
                     ),
                     "taxon_filter_retained_reads": format_count(filtered_total),
@@ -407,30 +384,19 @@ def write_sample_qc(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Build the count tables from Bracken estimates or, without them, from the "
-                    "classifier's clade counts, with classification and lineage QC."
-    )
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--taxon-filter", choices=["none", "prokaryote"], default="none")
     parser.add_argument("--taxdump")
     parser.add_argument("--drop-taxids", default="0,1")
     parser.add_argument(
-        "--kraken-reports",
-        nargs="+",
-        default=None,
-        help="Per-sample Kraken2 or KrakenUniq reports, one per sample: classification totals, "
-             "KrakenUniq's unique k-mers, and the counts themselves when no Bracken tables are given.",
-    )
-    parser.add_argument(
         "--minimizer-reports",
         nargs="+",
         default=None,
         help="Per-sample Kraken2 reports with minimizer data, for --min-distinct-kmers.",
     )
-    parser.add_argument("--rank", choices=sorted(RANK_WORDS), default="G",
-                        help="Rank of the counts taken from the reports when no Bracken tables are given.")
+    parser.add_argument("--rank", choices=sorted(RANK_WORDS), default="G")
     parser.add_argument(
         "--min-distinct-kmers",
         type=int,
@@ -438,47 +404,28 @@ def main():
         help="Drop a taxon from a sample when its reads cover fewer distinct k-mers or, for Kraken2, "
              "minimizers (0: keep all).",
     )
-    parser.add_argument("--min-taxon-reads", type=int, default=0,
-                        help="Drop a taxon from a sample when it has fewer reads (0: keep all).")
-    parser.add_argument("bracken_files", nargs="*")
+    parser.add_argument("reports", nargs="+", help="Per-sample Kraken2 or KrakenUniq reports, one per sample.")
     args = parser.parse_args()
-    if not args.bracken_files and not args.kraken_reports:
-        raise SystemExit("give Bracken tables, or --kraken-reports to count from the reports")
 
     samples = read_samples(args.metadata)
     counts = {}
     features = {}
-    observed = []
     kraken_metrics = {}
     distinct_by_sample = {}
 
-    def add_counts(sample, sample_counts, sample_features):
-        observed.append(sample)
-        features.update(sample_features)
-        for fid, count in sample_counts.items():
-            feature_counts = counts.setdefault(fid, {})
-            feature_counts[sample] = feature_counts.get(sample, 0) + count
-
     # Sorted so the table is byte-identical regardless of the order in which
-    # the workflow hands over per-sample tables.
-    reports = {}
-    for path in sorted(args.kraken_reports or [], key=lambda value: Path(value).name):
+    # the workflow hands over per-sample reports.
+    for path in sorted(args.reports, key=lambda value: Path(value).name):
         sample, metrics, report_counts, report_features, distinct = read_kraken_report(path, args.rank)
-        if sample in reports:
+        if sample in kraken_metrics:
             raise SystemExit(f"duplicate Kraken report for sample {sample}")
-        reports[sample] = (report_counts, report_features)
         kraken_metrics[sample] = metrics
+        features.update(report_features)
+        for fid, count in report_counts.items():
+            counts.setdefault(fid, {})[sample] = count
         if distinct is not None:
             distinct_by_sample[sample] = distinct
-    if reports:
-        require_one_to_one(samples, list(reports), "Kraken report")
-    if args.bracken_files:
-        for path in sorted(args.bracken_files, key=lambda value: Path(value).name):
-            add_counts(*read_bracken(path))
-        require_one_to_one(samples, observed, "Bracken table")
-    else:
-        for sample in sorted(reports):
-            add_counts(sample, *reports[sample])
+    require_one_to_one(samples, list(kraken_metrics), "Kraken report")
     if args.minimizer_reports:
         distinct_by_sample = {}
         for path in args.minimizer_reports:
@@ -488,11 +435,10 @@ def main():
     if args.min_distinct_kmers > 0 and not distinct_by_sample:
         raise SystemExit("--min-distinct-kmers needs KrakenUniq reports or, for Kraken2, --minimizer-reports")
 
-    filtering = args.min_distinct_kmers > 0 or args.min_taxon_reads > 0
+    filtering = args.min_distinct_kmers > 0
     removed = []
     if filtering:
-        removed = filter_by_distinct_kmers(counts, features, distinct_by_sample or {sample: {} for sample in samples},
-                                           args.min_distinct_kmers, args.min_taxon_reads)
+        removed = filter_by_distinct_kmers(counts, features, distinct_by_sample, args.min_distinct_kmers)
     with open(f"{args.prefix}_kmer_filter.tsv", "w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["sample_id", "feature_id", "name", "removed_reads", "distinct_kmers"])

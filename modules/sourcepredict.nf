@@ -63,7 +63,7 @@ process SOURCEPREDICT {
         --counts ${counts} \\
         --map ${mapping} \\
         --analysis ${meta.analysis} \\
-        --rank ${params.bracken_rank} \\
+        --rank ${params.rank} \\
         --neighbors ${neighbours} \\
         --unknown-alpha ${params.sourcepredict_unknown_alpha} \\
         --normalization ${params.sourcepredict_normalization} \\

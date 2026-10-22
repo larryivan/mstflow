@@ -19,8 +19,7 @@ attributed against modern sources. The two kinds of library differ in three tech
 ways: ancient fragments are short (median 72 bp in the test data, against reads of 76
 to 151 bp in its modern libraries), they carry deamination at their ends, and they are
 trimmed by AdapterRemoval rather than fastp. Both are trimmed to the same minimum length
-(`--min_length`, 35 bp), counted in fragments and classified against one database, and
-Bracken's read-length model is chosen for each library.
+(`--min_length`, 35 bp), counted in fragments and classified against one database.
 
 To check that the rest does not bias attribution, each of the seven modern source
 libraries in the test data was made into two ancient-like libraries. Every read 1 was
@@ -32,28 +31,55 @@ own study's sources left out, as in cross-validation.
 
 | Library | Profile change (Bray-Curtis) | Two libraries of one environment | Own environment: modern / cut / cut and damaged |
 |---|--:|--:|---|
-| oral_1 | 0.02 | 0.61 | 0.94 / 0.93 / 0.96 |
-| oral_2 | 0.04 | 0.68 | 0.98 / 0.98 / 0.99 |
-| gut_1 | 0.04 | 0.84 | 0.94 / 0.96 / 0.95 |
-| gut_2 | 0.04 | 0.70 | 0.60 / 0.61 / 0.57 |
-| gut_3 | 0.05 | 0.61 | 0.88 / 0.86 / 0.90 |
-| soil_1 | 0.22 | 0.31 | 0.73 / 0.80 / 0.83 |
-| soil_2 | 0.21 | 0.31 | 0.80 / 0.91 / 0.92 |
+| oral_1 | 0.02 | 0.61 | 0.97 / 0.96 / 0.97 |
+| oral_2 | 0.03 | 0.68 | 0.99 / 0.99 / 0.99 |
+| gut_1 | 0.04 | 0.86 | 0.94 / 0.96 / 0.96 |
+| gut_2 | 0.04 | 0.68 | 0.62 / 0.57 / 0.57 |
+| gut_3 | 0.04 | 0.65 | 0.87 / 0.87 / 0.83 |
+| soil_1 | 0.11 | 0.24 | 0.94 / 0.89 / 0.89 |
+| soil_2 | 0.17 | 0.24 | 0.88 / too few counts |
 
 The test data has a single soil study, so each soil library was attributed with the
 other as the only soil source.
 
 For oral and gut libraries, cutting to ancient lengths changed the genus profile more
 than ten times less than two libraries of one environment differ, and the estimate by
-at most three percentage points; damage added nothing. Short reads are classified less
+at most five percentage points; damage added little. Short reads are classified less
 often (57% of oral_1 fell to 43%), and soil, of which only 3 to 6% is classified with
-this database, lost more of its profile, yet its estimates rose rather than fell. What
-remains between an ancient sink and a modern source is the biology that attribution
-is meant to measure.
+this database, lost more of its profile: soil_1 cut short still went to soil, while
+soil_2 kept too few counts to be attributed at all. What remains between an ancient
+sink and a modern source is the biology that attribution is meant to measure.
+
+## Why not Bracken
+
+Bracken re-estimates abundances by moving the reads a classifier could only place at a
+family or higher down to the genera below, in proportion to the genera found in the
+same sample. That suits a profile of one sample, but a sink is a mixture, and the reads
+of one source get moved into the genera of another. In the test data's gut and soil
+mixture (10% and 90% of read pairs), Bracken gave Bradyrhizobium, a soil genus, 275
+reads where the soil's share of its own count was 705, and Escherichia, a gut genus, 397
+where 45 were expected: the soil's reads placed only to Proteobacteria went to Escherichia once
+the faeces brought it in. SourceTracker2 then put 12% of the mixture in soil, against
+the 24% its reads predicted.
+
+A classifier places each read on its own, so a mixture's counts are the sum of its
+sources' counts. With the classifier's own counts, every mixture in the test data came
+within 0.06 of its known composition, and the soil one within 0.01; in cross-validation
+FEAST rose from 57% to 100% correct and FastST from 29% to 100%. The cost is that reads
+placed only above the rank are not counted, which leaves poorly covered samples, such as
+soils in a small database, with fewer counts.
+
+For the same reason the table keeps every read, with no minimum per taxon and sample.
+Bracken drops taxa below 10 reads; applied to the classifier's counts, that minimum
+alone brought FEAST back to 57% and FastST to 29%, and moved the ancient-like mixture
+0.11 from its composition. A genus with 15 reads in a source and 7 in a mixture of it
+is kept in one and dropped from the other, so the counts no longer add up, and FEAST and
+FastST lean on rare genera. Rare genera do make a shallow sample look rich, so the depth
+flag in the sample summary counts only taxa with `--qc_min_taxon_reads` (10) reads.
 
 ## Why `all_fragments` uses native paired input
 
-Kraken2 2.1.6 counts every minimizer position in `total_kmers`, including the ambiguous positions produced by an `N` run, and subtracts only its own mate-pair and reading-frame markers (`src/classify.cc`, `ClassifySequence`). Because `required_score = ceil(confidence * total_kmers)`, concatenating two 40 bp mates with a 100 `N` spacer raises the denominator from 12 native paired positions to 146, and the confidence requirement at 0.05 from 1 hit to 8. Short ancient fragments that native `--paired` classifies are therefore lost. MSTFlow submits both mates natively and gives each collapsed single-end fragment a placeholder mate shorter than `kraken2_kmer_len`, which contributes exactly zero minimizer positions and so reproduces native single-end classification. Placeholder mates are excluded from informative length, k-mer-equivalent length, and Bracken read-length statistics.
+Kraken2 2.1.6 counts every minimizer position in `total_kmers`, including the ambiguous positions produced by an `N` run, and subtracts only its own mate-pair and reading-frame markers (`src/classify.cc`, `ClassifySequence`). Because `required_score = ceil(confidence * total_kmers)`, concatenating two 40 bp mates with a 100 `N` spacer raises the denominator from 12 native paired positions to 146, and the confidence requirement at 0.05 from 1 hit to 8. Short ancient fragments that native `--paired` classifies are therefore lost. MSTFlow submits both mates natively and gives each collapsed single-end fragment a placeholder mate shorter than `kraken2_kmer_len`, which contributes exactly zero minimizer positions and so reproduces native single-end classification. Placeholder mates are excluded from the informative length and k-mer-equivalent length statistics.
 
 `kraken2_confidence`'s effective denominator is recorded per sample as `median_kraken_confidence_denominator` in `*.kraken2.read_length.tsv`.
 
@@ -61,13 +87,9 @@ Kraken2 2.1.6 counts every minimizer position in `total_kmers`, including the am
 
 ## Parameter semantics
 
-`bracken_read_len: auto` selects the nearest available `database<N>mers.kmer_distrib` per sample from the median observed single-read length and records the choice. For paired-end data, each mate contributes one read-length observation; the two mate lengths are never added together. A positive integer forces a model and fails if that distribution is absent.
+`kraken2_min_read_len` must be at least `kraken2_kmer_len`. The default Kraken confidence and minimum-hit-group settings are explicit so sources and sinks cannot silently use different classifier defaults. Per-read classifications are disabled by default; the reports are kept.
 
-If a valid Kraken report yields no estimate at the requested Bracken rank and `bracken_threshold`, MSTFlow retains the sample column with zero estimated counts, emits a zero-root Bracken report, and records `zero_estimates/no_estimates_at_requested_rank_threshold` in its per-sample status file. This means only that Bracken produced no estimate under the declared settings; it does not establish biological absence. The original Kraken report remains unchanged in the Kraken outputs. MSTFlow does not silently lower the threshold or invent an abundance estimate, and every other Bracken failure remains fatal.
-
-`kraken2_min_read_len` must be at least `kraken2_kmer_len`. The default Kraken confidence and minimum-hit-group settings are explicit so sources and sinks cannot silently use different classifier defaults. Per-read classifications are disabled by default; reports and downstream Bracken inputs are retained.
-
-`host_min_mapq: 0` removes an entire fragment when either mate has any primary host alignment. A threshold such as 20 is suitable only as a separately declared sensitivity analysis. Minimizer data and taxon names are enabled in the Kraken QC report; MSTFlow also emits a Bracken-compatible six-column report.
+`host_min_mapq: 0` removes an entire fragment when either mate has any primary host alignment. A threshold such as 20 is suitable only as a separately declared sensitivity analysis. Minimizer data and taxon names are enabled in the Kraken QC report; MSTFlow also emits the standard six-column report.
 
 `require_explicit_host_for_nondefault: true` prevents a non-human `host_group` from silently using the default human reference. Each such sample must provide its own indexed `host_ref`.
 

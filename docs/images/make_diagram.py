@@ -4,7 +4,7 @@
 Ancient and modern libraries enter on their own lines, are trimmed on their own
 branch, then run side by side. After host removal the pair splits, like a line with
 two branches through the centre of town: Kraken2 on one, KrakenUniq on the other,
-and rejoins at Bracken, which follows either, then the filters and the count table. The
+and rejoins at the filters, before the count table. The
 source attribution line leaves the table, fans out into one track per method and
 gathers again for the comparison. Authentication, for ancient libraries only, is a spur
 of the ancient line that rises from the table. A thin QC line runs underneath.
@@ -26,10 +26,10 @@ MID = 134.5                              # centre of the pair once it runs toget
 A_Y, M_Y = MID - GAP / 2, MID + GAP / 2
 X0, XT, XB = 118, 168, 220               # line start, trim stop, bend start
 
-X_BWA, X_BRACKEN, X_FILTERS, X_TABLE = 352, 532, 648, 730
+X_BWA, X_FILTERS, X_TABLE = 352, 560, 730
 SPLIT = 36                               # how far each branch moves off the centre line
-UPPER = [("Kraken2", "classification", 442)]
-LOWER = [("KrakenUniq", "or instead", 442)]
+UPPER = [("Kraken2", "classification", 456)]
+LOWER = [("KrakenUniq", "or instead", 456)]
 
 X_FAN, X_GATHER, X_END = 770, 936, 966   # the method tracks spread and gather here
 METHODS = ["SourceTracker2", "FEAST", "FastST", "SourceID-NMF", "SourcePredict"]
@@ -115,10 +115,10 @@ def ring(x, y, colour, t, r=4.2, width=2.2):
 
 
 def branch(direction):
-    """Centre line of one branch between host removal and Bracken."""
+    """Centre line of one branch between host removal and the filters."""
     y = MID + direction * SPLIT
     return [(X_BWA - 12, MID), (X_BWA - 2, MID), (X_BWA - 2 + SPLIT, y),
-            (X_BRACKEN + 2 - SPLIT, y), (X_BRACKEN + 2, MID), (X_BRACKEN + 12, MID)]
+            (X_FILTERS + 2 - SPLIT, y), (X_FILTERS + 2, MID), (X_FILTERS + 12, MID)]
 
 
 def pair(centre, t, radii):
@@ -172,7 +172,7 @@ def build(name):
     for direction in (-1, 1):
         s += pair(branch(direction), t, [6, 26, 26, 6])
     for key, y in (("ancient", A_Y), ("modern", M_Y)):
-        s.append(path(f"M{X_BRACKEN} {y} H{X_TABLE}", t[key]))
+        s.append(path(f"M{X_FILTERS} {y} H{X_TABLE}", t[key]))
 
     s.append(text(X0 - 14, A_TOP + 4.5, "Ancient DNA", t, size=12, weight=600, fill=t["ancient"], anchor="end"))
     s.append(text(X0 - 14, M_BOT + 4.5, "Modern DNA", t, size=12, weight=600, fill=t["modern"], anchor="end"))
@@ -184,11 +184,9 @@ def build(name):
     # where the branches split and rejoin, names sit on the side with no branch
     # (the branch above leaves at 45 degrees, so the name can sit closer than the role)
     for tool, what, x, anchor, side in (("BWA", "host removal", X_BWA, "end", -1),
-                                        ("Bracken", "abundance", X_BRACKEN, "start", 1)):
+                                        ("Filters", "reads, k-mers, taxa", X_FILTERS, "start", 1)):
         s += [capsule(x, MID, t), text(x - side * 8, MID + above, tool, t, anchor=anchor),
               role(x + side * 12, MID + below, what, t, anchor=anchor)]
-    s += [capsule(X_FILTERS, MID, t), text(X_FILTERS, MID + above, "Filters", t),
-          role(X_FILTERS, MID + below, "k-mers, taxa", t)]
     for stops, direction in ((UPPER, -1), (LOWER, 1)):
         y = MID + direction * SPLIT
         for tool, what, x in stops:

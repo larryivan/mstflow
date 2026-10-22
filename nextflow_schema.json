@@ -136,7 +136,7 @@
             "title": "Classifier",
             "type": "object",
             "fa_icon": "fas fa-microscope",
-            "description": "Kraken2 or KrakenUniq; Bracken follows either.",
+            "description": "Kraken2, or KrakenUniq in its place.",
             "properties": {
                 "classifier": {
                     "type": "string",
@@ -146,11 +146,11 @@
                         "kraken2",
                         "krakenuniq"
                     ],
-                    "help_text": "`kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Bracken then re-estimates abundances after either. Use one classifier and database for sources and sinks alike."
+                    "help_text": "`kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Use one classifier and database for sources and sinks alike."
                 },
                 "krakenuniq_db": {
                     "type": "string",
-                    "description": "KrakenUniq database: a directory with database.kdb, database.idx and taxDB (and Bracken's database<N>mers.kmer_distrib files, unless --run_bracken false), or a .tar.gz of one; local or a URL.",
+                    "description": "KrakenUniq database: a directory with database.kdb, database.idx and taxDB, or a .tar.gz of one; local or a URL.",
                     "format": "path",
                     "pattern": "^[^'\\n\\r]*$"
                 },
@@ -163,12 +163,6 @@
                     "type": "integer",
                     "description": "Remove a taxon from a sample when its reads cover fewer unique k-mers.",
                     "default": 1000,
-                    "minimum": 0
-                },
-                "krakenuniq_min_reads": {
-                    "type": "integer",
-                    "description": "Remove a taxon from a sample when it has fewer reads.",
-                    "default": 200,
                     "minimum": 0
                 }
             }
@@ -188,7 +182,7 @@
                     "type": "string",
                     "description": "Kraken2 database: a directory (hash.k2d, opts.k2d, taxo.k2d) or a .tar.gz of one, local or a URL. Required with the default classifier.",
                     "format": "path",
-                    "help_text": "Prebuilt indexes from https://benlangmead.github.io/aws-indexes/k2 can be given as the downloaded .tar.gz or its URL; the workflow unpacks it. Bracken needs the `database<N>mers.kmer_distrib` files, which prebuilt indexes include."
+                    "help_text": "Prebuilt indexes from https://benlangmead.github.io/aws-indexes/k2 can be given as the downloaded .tar.gz or its URL; the workflow unpacks it."
                 },
                 "kraken2_confidence": {
                     "type": "number",
@@ -232,7 +226,7 @@
                     "description": "Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all).",
                     "default": 0,
                     "minimum": 0,
-                    "help_text": "False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_kmer_filter.tsv`. See docs/usage.md."
+                    "help_text": "False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/kraken2_<rank>_kmer_filter.tsv`. See docs/usage.md."
                 },
                 "kraken2_save_read_classifications": {
                     "type": "boolean",
@@ -272,20 +266,15 @@
                 }
             }
         },
-        "bracken_options": {
-            "title": "Bracken abundance",
+        "count_table_options": {
+            "title": "Count table",
             "type": "object",
-            "fa_icon": "fas fa-chart-bar",
+            "fa_icon": "fas fa-table",
+            "description": "The count table holds, for each taxon at one rank, the reads the classifier placed in it or below it.",
             "properties": {
-                "run_bracken": {
-                    "type": "boolean",
-                    "description": "Re-estimate abundances at --bracken_rank with Bracken; without it the tables hold the classifier's own clade counts.",
-                    "default": true,
-                    "help_text": "Bracken moves reads the classifier left at higher ranks down to --bracken_rank. It needs the database's database<N>mers.kmer_distrib files, which prebuilt Kraken2 indexes ship; for KrakenUniq, build them with `bracken-build -y krakenuniq -k 31`."
-                },
-                "bracken_rank": {
+                "rank": {
                     "type": "string",
-                    "description": "Taxonomic rank of the output tables.",
+                    "description": "Taxonomic rank of the count tables.",
                     "default": "G",
                     "enum": [
                         "D",
@@ -296,29 +285,6 @@
                         "G",
                         "S"
                     ]
-                },
-                "bracken_read_len": {
-                    "type": [
-                        "string",
-                        "integer"
-                    ],
-                    "description": "Bracken read-length model: `auto` picks the nearest available one per sample, or give a length.",
-                    "default": "auto",
-                    "pattern": "^auto$",
-                    "minimum": 1
-                },
-                "bracken_threshold": {
-                    "type": "integer",
-                    "description": "Minimum reads for a taxon to be re-estimated.",
-                    "default": 10,
-                    "minimum": 0
-                },
-                "bracken_extra_args": {
-                    "type": "string",
-                    "description": "Extra arguments passed to Bracken.",
-                    "default": "",
-                    "pattern": "^[^'\\n\\r]*$",
-                    "hidden": true
                 }
             }
         },
@@ -679,11 +645,6 @@
                     "description": "Container image for Kraken2.",
                     "hidden": true
                 },
-                "container_bracken": {
-                    "type": "string",
-                    "description": "Container image for Bracken.",
-                    "hidden": true
-                },
                 "container_multiqc": {
                     "type": "string",
                     "description": "Container image for MultiQC.",
@@ -741,8 +702,14 @@
                     "type": "integer",
                     "default": 20,
                     "minimum": 0,
-                    "description": "Flag samples with fewer taxa (at bracken_rank, after the taxon filter) than this.",
+                    "description": "Flag samples with fewer taxa (at --rank, after the taxon filter) than this.",
                     "help_text": "Shallow profiles carry little information, and downstream attribution of them is unreliable."
+                },
+                "qc_min_taxon_reads": {
+                    "type": "integer",
+                    "description": "A taxon counts towards `--qc_min_taxa` only with at least this many reads.",
+                    "default": 10,
+                    "minimum": 1
                 }
             }
         }
@@ -764,7 +731,7 @@
             "$ref": "#/$defs/kraken2_options"
         },
         {
-            "$ref": "#/$defs/bracken_options"
+            "$ref": "#/$defs/count_table_options"
         },
         {
             "$ref": "#/$defs/taxon_filter_options"

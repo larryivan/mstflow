@@ -53,22 +53,21 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--classifier` | Which classifier to use. `kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Bracken then re-estimates abundances after either. Use one classifier and database for sources and sinks alike. | `kraken2` / `krakenuniq` | `kraken2` |
-| `--krakenuniq_db` | KrakenUniq database: a directory with database.kdb, database.idx and taxDB (and Bracken's database<N>mers.kmer_distrib files, unless --run_bracken false), or a .tar.gz of one; local or a URL. | string |  |
+| `--classifier` | Which classifier to use. `kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Use one classifier and database for sources and sinks alike. | `kraken2` / `krakenuniq` | `kraken2` |
+| `--krakenuniq_db` | KrakenUniq database: a directory with database.kdb, database.idx and taxDB, or a .tar.gz of one; local or a URL. | string |  |
 | `--krakenuniq_preload_size` | Load the KrakenUniq database in chunks of this size, e.g. 16G; unset loads it whole. | string |  |
 | `--krakenuniq_min_kmers` | Remove a taxon from a sample when its reads cover fewer unique k-mers. | integer | `1000` |
-| `--krakenuniq_min_reads` | Remove a taxon from a sample when it has fewer reads. | integer | `200` |
 
 ## Kraken2 classification
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--kraken2_db` | Kraken2 database: a directory (hash.k2d, opts.k2d, taxo.k2d) or a .tar.gz of one, local or a URL. Required with the default classifier. Prebuilt indexes from https://benlangmead.github.io/aws-indexes/k2 can be given as the downloaded .tar.gz or its URL; the workflow unpacks it. Bracken needs the `database<N>mers.kmer_distrib` files, which prebuilt indexes include. | string |  |
+| `--kraken2_db` | Kraken2 database: a directory (hash.k2d, opts.k2d, taxo.k2d) or a .tar.gz of one, local or a URL. Required with the default classifier. Prebuilt indexes from https://benlangmead.github.io/aws-indexes/k2 can be given as the downloaded .tar.gz or its URL; the workflow unpacks it. | string |  |
 | `--kraken2_confidence` | Kraken2 confidence threshold. | number | `0.05` |
 | `--kraken2_minimum_hit_groups` | Kraken2 minimum hit groups. | integer | `2` |
 | `--kraken2_kmer_len` | k-mer length the database was built with. | integer | `35` |
 | `--kraken2_min_read_len` | Shortest read submitted to Kraken2; must be at least `kraken2_kmer_len`. | integer | `35` |
-| `--kraken2_min_distinct_minimizers` | Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all). False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/bracken_<rank>_kmer_filter.tsv`. See docs/usage.md. | integer | `0` |
+| `--kraken2_min_distinct_minimizers` | Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all). False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/kraken2_<rank>_kmer_filter.tsv`. See docs/usage.md. | integer | `0` |
 | `--kraken2_save_read_classifications` | Keep per-read Kraken2 classifications (large). | boolean | `false` |
 | `--kraken2_cpus` | CPUs per Kraken2 task. | integer | `16` |
 | `--kraken2_memory` | Memory per Kraken2 task; must hold the whole database. | string | `160 GB` |
@@ -86,22 +85,11 @@ hidden from `--help` unless `--showHidden` is given.
 
 </details>
 
-## Bracken abundance
+## Count table
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--run_bracken` | Re-estimate abundances at --bracken_rank with Bracken; without it the tables hold the classifier's own clade counts. Bracken moves reads the classifier left at higher ranks down to --bracken_rank. It needs the database's database<N>mers.kmer_distrib files, which prebuilt Kraken2 indexes ship; for KrakenUniq, build them with `bracken-build -y krakenuniq -k 31`. | boolean | `true` |
-| `--bracken_rank` | Taxonomic rank of the output tables. | `D` / `P` / `C` / `O` / `F` / `G` / `S` | `G` |
-| `--bracken_read_len` | Bracken read-length model: `auto` picks the nearest available one per sample, or give a length. | string or integer | `auto` |
-| `--bracken_threshold` | Minimum reads for a taxon to be re-estimated. | integer | `10` |
-
-<details><summary>Advanced</summary>
-
-| Option | Description | Type | Default |
-|---|---|---|---|
-| `--bracken_extra_args` | Extra arguments passed to Bracken. | string |  |
-
-</details>
+| `--rank` | Taxonomic rank of the count tables. | `D` / `P` / `C` / `O` / `F` / `G` / `S` | `G` |
 
 ## Taxon filter
 
@@ -194,7 +182,8 @@ hidden from `--help` unless `--showHidden` is given.
 | Option | Description | Type | Default |
 |---|---|---|---|
 | `--qc_min_classified_reads` | Flag samples with fewer classified fragments than this. | integer | `10000` |
-| `--qc_min_taxa` | Flag samples with fewer taxa (at bracken_rank, after the taxon filter) than this. Shallow profiles carry little information, and downstream attribution of them is unreliable. | integer | `20` |
+| `--qc_min_taxa` | Flag samples with fewer taxa (at --rank, after the taxon filter) than this. Shallow profiles carry little information, and downstream attribution of them is unreliable. | integer | `20` |
+| `--qc_min_taxon_reads` | A taxon counts towards `--qc_min_taxa` only with at least this many reads. | integer | `10` |
 
 ## Containers
 
@@ -207,7 +196,6 @@ hidden from `--help` unless `--showHidden` is given.
 | `--container_adapterremoval` | Container image for AdapterRemoval. | string |  |
 | `--container_bwa` | Container image for BWA. | string |  |
 | `--container_kraken2` | Container image for Kraken2. | string |  |
-| `--container_bracken` | Container image for Bracken. | string |  |
 | `--container_multiqc` | Container image for MultiQC. | string |  |
 | `--container_python_tools` | Container image for the workflow's Python helpers. | string |  |
 | `--container_sourcetracker2` | Container image for SourceTracker2. | string |  |

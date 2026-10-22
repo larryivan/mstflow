@@ -9,7 +9,7 @@ and downloaded on the first run. This directory holds the recipe they were built
 |---|---|
 | [`libraries.tsv`](libraries.tsv) | The 18 libraries, with their ENA run and project accessions |
 | [`mixtures.tsv`](mixtures.tsv) | The three mixtures and the share of each library in them |
-| [`genomes.tsv`](genomes.tsv) | The 274 reference genomes in the Kraken2/Bracken database |
+| [`genomes.tsv`](genomes.tsv) | The 274 reference genomes in the Kraken2 database |
 | [`make_test_data.py`](make_test_data.py) | Downloads the reads, genomes, taxonomy and host genome, and mixes the mixtures |
 | [`check_mixtures.py`](check_mixtures.py) | Checks the mixtures' attribution after a run |
 | [`build_test_db.sh`](build_test_db.sh) | Builds the database, host index and authentication references, and collects the release files |
@@ -65,7 +65,7 @@ through the ancient branch of the workflow.
 The three libraries are also attributed on their own. If attribution is right, a
 mixture's estimate for each source is its components' estimates weighted by the counts
 they bring to the table; `check_mixtures.py` compares the two and fails when they differ
-by more than 0.10.
+by more than 0.10. CI runs it after the test profile.
 
 The data belong to the original studies; please cite them, through the publications
 linked from each ENA project page, if you use these files for anything beyond testing.
@@ -86,7 +86,7 @@ covered least: only about 3% of its reads are classified, into five genera.
 
 Genomes and their NCBI taxonomy were downloaded on 2026-10-21; the release carries
 `nodes.dmp`, `names.dmp` and an empty `merged.dmp` cut down to the database's taxa. The database is built
-with Kraken2 2.1.6 (k = 35) and Bracken read-length models for 50, 75, 100 and 150 bp.
+with Kraken2 2.1.6 (k = 35).
 The host reference is the human mitochondrial genome (NC_012920.1), which is enough to
 exercise host removal without a 3 GB download.
 

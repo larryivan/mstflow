@@ -91,10 +91,6 @@ class FragmentToolTests(unittest.TestCase):
             metrics = read_metrics(stats)
             self.assertEqual(metrics["retained_single_fragments"], "2")
             self.assertEqual(metrics["retained_paired_fragments"], "1")
-            # Bracken observations: 60, 40 (collapsed) and 40, 40 (real mates);
-            # the placeholder is excluded, so the median stays 40.
-            self.assertEqual(metrics["median_bracken_read_length"], "40")
-            self.assertEqual(metrics["mean_bracken_read_length"], "45.0")
             # Confidence denominators: 26, 6 (native SE) and 6+6 (native paired).
             self.assertEqual(metrics["median_kraken_confidence_denominator"], "12")
 
@@ -111,8 +107,6 @@ class FragmentToolTests(unittest.TestCase):
             )
             rescan = read_metrics(rescanned)
             for metric in (
-                "median_bracken_read_length",
-                "mean_bracken_read_length",
                 "median_kraken_confidence_denominator",
                 "mean_kraken_confidence_denominator",
                 "median_informative_bases",
@@ -184,7 +178,7 @@ class FragmentToolTests(unittest.TestCase):
                 (tmp / "level9" / "out.fq.gz").stat().st_size,
             )
 
-    def test_paired_bracken_length_is_one_mate_not_combined_span(self):
+    def test_paired_kmer_equivalent_length_counts_both_mates(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             r1 = tmp / "R1.fq.gz"
@@ -206,56 +200,8 @@ class FragmentToolTests(unittest.TestCase):
                 "--kmer-length",
                 "35",
             )
-            metrics = read_metrics(stats)
-            self.assertEqual(metrics["median_bracken_read_length"], "75")
-            self.assertEqual(metrics["median_kmer_equivalent_read_length"], "116")
-
-            database = tmp / "db"
-            database.mkdir()
-            (database / "database75mers.kmer_distrib").touch()
-            (database / "database100mers.kmer_distrib").touch()
-            selection = tmp / "selection.tsv"
-            run_helper(
-                "select-bracken-length",
-                "--stats",
-                stats,
-                "--database",
-                database,
-                "--requested",
-                "auto",
-                "--sample-id",
-                "sample",
-                "--output",
-                selection,
-            )
-            with open(selection, encoding="utf-8", newline="") as handle:
-                row = next(csv.DictReader(handle, delimiter="\t"))
-            self.assertEqual(row["observed_median_bracken_read_length"], "75")
-            self.assertEqual(row["selected_bracken_read_length"], "75")
-            self.assertEqual(row["distribution_file"], "database75mers.kmer_distrib")
-
-            tie_stats = tmp / "tie.tsv"
-            tie_stats.write_text(
-                "metric\tvalue\nmedian_bracken_read_length\t87.5\n",
-                encoding="utf-8",
-            )
-            tie_selection = tmp / "tie_selection.tsv"
-            run_helper(
-                "select-bracken-length",
-                "--stats",
-                tie_stats,
-                "--database",
-                database,
-                "--requested",
-                "auto",
-                "--sample-id",
-                "tie",
-                "--output",
-                tie_selection,
-            )
-            with open(tie_selection, encoding="utf-8", newline="") as handle:
-                # Equal distance to 75 and 100: the shorter model wins.
-                self.assertEqual(next(csv.DictReader(handle, delimiter="\t"))["selected_bracken_read_length"], "75")
+            # Two 75 bp mates give 2 x 41 k-mer windows, as many as one 116 bp read.
+            self.assertEqual(read_metrics(stats)["median_kmer_equivalent_read_length"], "116")
 
     def test_pair_name_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

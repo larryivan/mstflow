@@ -21,7 +21,6 @@ refs/
 db/
 databases/
 kraken2*/
-bracken*/
 taxdump/
 *.k2d
 database*.idx

@@ -20,7 +20,7 @@ QC_FIELDS = [
     "source_sink",
     "model_source_env",
     "kraken_classified_fraction",
-    "bracken_total_reads",
+    "rank_total_reads",
     "taxon_filter_retained_reads",
     "taxon_filter_retained_fraction",
     "input_total_count",
@@ -124,7 +124,7 @@ def read_feature_sample_qc(path):
             "sample_id",
             "kraken_total_reads",
             "kraken_classified_reads",
-            "bracken_total_reads",
+            "rank_total_reads",
             "taxon_filter_retained_reads",
         }
         missing = sorted(required.difference(fields))
@@ -159,25 +159,25 @@ def aggregate_feature_qc(members, feature_qc):
     rows = [feature_qc[sample] for sample in members]
     kraken_total = complete_sum(rows, "kraken_total_reads")
     kraken_classified = complete_sum(rows, "kraken_classified_reads")
-    bracken_total = complete_sum(rows, "bracken_total_reads")
+    rank_total = complete_sum(rows, "rank_total_reads")
     retained_reads = complete_sum(rows, "taxon_filter_retained_reads")
     return {
         "kraken_classified_fraction": ratio(kraken_classified, kraken_total),
-        "bracken_total_reads": bracken_total,
+        "rank_total_reads": rank_total,
         "taxon_filter_retained_reads": retained_reads,
-        "taxon_filter_retained_fraction": ratio(retained_reads, bracken_total),
+        "taxon_filter_retained_fraction": ratio(retained_reads, rank_total),
     }
 
 
 def quality_exclusion_reason(qc, taxon_scope, min_classified, min_retained_reads, min_retained_fraction):
     classified = qc["kraken_classified_fraction"]
-    bracken_reads = qc["bracken_total_reads"]
+    rank_reads = qc["rank_total_reads"]
     retained_reads = qc["taxon_filter_retained_reads"]
     retained_fraction = qc["taxon_filter_retained_fraction"]
     if classified is None:
         return "missing_kraken_classified_fraction"
-    if bracken_reads is None:
-        return "missing_bracken_total_reads"
+    if rank_reads is None:
+        return "missing_rank_total_reads"
     if taxon_scope == "filtered" and retained_reads is None:
         return "missing_taxon_filter_retained_reads"
     if taxon_scope == "filtered" and retained_fraction is None:
@@ -185,8 +185,8 @@ def quality_exclusion_reason(qc, taxon_scope, min_classified, min_retained_reads
     if classified < min_classified:
         return f"below_min_kraken_classified_fraction:{min_classified:.12g}"
     if taxon_scope == "all":
-        if bracken_reads < min_retained_reads:
-            return f"below_min_bracken_total_reads:{min_retained_reads:.12g}"
+        if rank_reads < min_retained_reads:
+            return f"below_min_rank_total_reads:{min_retained_reads:.12g}"
     else:
         if retained_reads < min_retained_reads:
             return f"below_min_taxon_filter_retained_reads:{min_retained_reads:.12g}"
@@ -406,7 +406,7 @@ def main():
                 "source_sink": role or "NA",
                 "model_source_env": first_present(row, "model_source_env") or "NA",
                 "kraken_classified_fraction": format_number(qc["kraken_classified_fraction"]),
-                "bracken_total_reads": format_number(qc["bracken_total_reads"], count=True),
+                "rank_total_reads": format_number(qc["rank_total_reads"], count=True),
                 "taxon_filter_retained_reads": format_number(qc["taxon_filter_retained_reads"], count=True),
                 "taxon_filter_retained_fraction": format_number(qc["taxon_filter_retained_fraction"]),
                 "input_total_count": input_totals[sample],

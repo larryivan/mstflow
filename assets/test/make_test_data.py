@@ -10,7 +10,7 @@
   mixtures.tsv (see that section of README.md)
 - samplesheet.tsv, pointing at the reads by file name
 
-Then run build_test_db.sh to build the Kraken2/Bracken database and the release files.
+Then run build_test_db.sh to build the Kraken2 database and the release files.
 Only the Python standard library is used.
 """
 import csv

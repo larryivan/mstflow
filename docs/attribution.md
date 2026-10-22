@@ -97,6 +97,26 @@ site, and a method that has seen a study's other libraries is judged too kindly.
 A method that scores poorly here should not be trusted on the real sinks, whatever its
 paper reports.
 
+## How well the shares hold
+
+Cross-validation asks whether a method names the right environment for a held-out
+source. Whether its shares are right shows only on sinks of known composition. The test
+data has three, mixed from libraries outside the source panel (see
+[the test data](../assets/test/README.md#mixtures)); their expected shares follow from
+how many counts each library brings. The largest error of each method:
+
+| Method | Largest error | |
+|---|--:|---|
+| SourceTracker2 | 0.06 | within 0.02 on the modern mixtures; the ancient-like one leans 0.06 to gut, whose short reads are classified more often |
+| FEAST | 0.56 | puts 39 to 56% of each mixture in its unknown source |
+| FastST | 0.52 | gives the dominant source far too much: 0.80 to 0.90 oral where 0.42 is |
+| SourceID-NMF | 0.93 | puts about 90% in its unknown source |
+| SourcePredict | – | gives the probability of each environment, not shares |
+
+Only SourceTracker2's shares can be read as proportions here. The other methods' calls
+are useful as a check on it, as cross-validation shows, but not their numbers.
+`assets/test/check_mixtures.py` repeats this check on any run of the test data.
+
 ## Known behaviour of each method
 
 **SourceTracker2.** `--sourcetracker2_alpha2` is the prior on the unknown source, as a
@@ -105,10 +125,11 @@ SourceTracker and of SourceTracker2's source code; the 2.0.1 release on Bioconda
 0.001. With 0.001 the unknown source can take on the composition of the sink itself:
 when a sink holds only a few dozen taxa and part of it is poorly represented in the
 sources, the unknown share grows from that part to absorb the whole sink, including taxa
-that match a source closely. In MSTFlow's test data, with about twenty genera per sink,
-0.001 put 94% of the ancient calculus and 96% of the paleosoil into the unknown source;
-with 0.1, 98% of the calculus went to the oral sources and 91% of the paleosoil to soil,
-and SourceTracker2 was right on 86% of held-out sources. Profiles with few taxa, from
+that match a source closely. In MSTFlow's test data, 0.001 put 93% of the ancient
+calculus, 60% of the paleosoil and even 96% of the modern faeces into the unknown source,
+and SourceTracker2 named none of the held-out sources; with 0.1, 94% of the calculus went
+to the oral sources and 94% of the paleosoil to soil, and it was right on 86% of
+held-out sources. Profiles with few taxa, from
 small databases or shallow libraries, are where this matters; check it
 with cross-validation.
 
@@ -117,8 +138,8 @@ the smallest sink or pooled source), since its own default would take it from th
 first sink alone.
 
 **FastST** fits only the taxa present in a sink, so a source can be scaled up freely
-as long as it matches the sink on those taxa. On sinks with few taxa and many zeros,
-such as sediments, it can return confident but wrong answers. Treat it as experimental.
+as long as it matches the sink on those taxa. Its calls were right on every held-out
+source, but its shares of the test mixtures were far off. Treat it as experimental.
 
 **SourceID-NMF** initialises its unknown profile from what the sources do not explain;
 on sinks far from every source it tends to assign everything to the unknown source.

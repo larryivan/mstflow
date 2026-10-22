@@ -50,8 +50,6 @@ class ContainerDirectiveTests(unittest.TestCase):
             "FILTER_HOST_ALIGNMENTS": ("filter_host_alignments.nf", "container_python_tools"),
             "PREPARE_KRAKEN_INPUT": ("prepare_kraken_input.nf", "container_python_tools"),
             "KRAKEN2_PROFILE": ("kraken2.nf", "container_kraken2"),
-            "SELECT_BRACKEN_LENGTH": ("select_bracken_length.nf", "container_python_tools"),
-            "BRACKEN_PROFILE": ("bracken.nf", "container_bracken"),
         }
         for process, (filename, parameter) in expected.items():
             text = (ROOT / "modules" / filename).read_text(encoding="utf-8")

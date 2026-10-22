@@ -47,11 +47,13 @@ jobs:
           # 18 libraries and 3 mixtures; the bone library is mostly human DNA and is flagged.
           test "$(tail -n +2 results/summary/sample_summary.tsv | wc -l)" -eq 21
           grep -q "^bone.*few_genera" results/summary/sample_summary.tsv
-          # Five methods for nine sinks (bone is too shallow and is left out), each
-          # scored by cross-validation.
+          # Five methods for nine sinks (the meadow soil has too few counts and is left
+          # out), each scored by cross-validation.
           test "$(tail -n +2 results/attribution/default/comparison.tsv | wc -l)" -eq 9
           awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) column[$i] = i; next } $column["included"] == "false" { print $1 }' \
-            results/attribution/default/inputs/attribution_sample_qc.tsv | grep -qx bone
+            results/attribution/default/inputs/attribution_sample_qc.tsv | grep -qx meadow_soil
           test "$(tail -n +2 results/attribution/default/evaluation/evaluation.tsv | wc -l)" -eq 5
           # The ancient calculus's Arachnia carries damage.
           grep -q "^calculus.*Arachnia.*damaged$" results/authentication/authentication.tsv
+          # The mixtures' estimates follow from their components'.
+          python3 assets/test/check_mixtures.py results

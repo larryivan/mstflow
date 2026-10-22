@@ -4,11 +4,11 @@
  * MSTFlow: metagenomic profiling of ancient and modern DNA together, followed by
  * optional source attribution with several methods.
  *
- *   samplesheet -> PREPROCESS -> PROFILE -> ATTRIBUTION
- *                  trimming,     Kraken2 and Bracken,    SourceTracker2, FEAST, FastST,
- *                  host removal  or KrakenUniq           SourceID-NMF, SourcePredict
- *                                          \-> AUTHENTICATION
- *                                              Bowtie2 and PyDamage
+ *   samplesheet -> PREPROCESS -> PROFILE ----> ATTRIBUTION
+ *                  trimming,     Kraken2 or     SourceTracker2, FEAST, FastST,
+ *                  host removal  KrakenUniq     SourceID-NMF, SourcePredict
+ *                                       \-> AUTHENTICATION
+ *                                           Bowtie2 and PyDamage
  */
 
 include { VALIDATE_METADATA } from './modules/validate_metadata'
@@ -20,7 +20,7 @@ include { ATTRIBUTION } from './subworkflows/attribution'
 include { AUTHENTICATION } from './subworkflows/authentication'
 include {
     binScript; isArchive; isOn; metaFromRow; readListFromRow; rejectReservedArgs;
-    requireBrackenDistributions; requireDirectory; splitList; taxdumpFile
+    requireDirectory; splitList; taxdumpFile
 } from './subworkflows/utils'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
@@ -60,6 +60,7 @@ workflow {
         SUMMARIZE_SAMPLES(
             metadata,
             PROFILE.out.sample_qc,
+            PROFILE.out.filtered_counts,
             PREPROCESS.out.step_counts.toSortedList { a, b -> a.name <=> b.name },
             binScript('summarize_samples.py')
         )
@@ -146,11 +147,7 @@ def checkParameters() {
         '--singleton', '--discarded', '--settings', '--combined-output', '--interleaved',
         '--interleaved-input', '--interleaved-output', '--demultiplex-only', '--bzip2'
     ])
-    rejectReservedArgs('bracken_extra_args', params.bracken_extra_args, ['-d', '-i', '-o', '-w', '-r', '-l', '-t'])
 
-    if (isOn(params.run_bracken) && !isOn(params.run_kraken2)) {
-        error 'run_bracken requires classification (run_kraken2)'
-    }
     if ((params.kraken2_min_distinct_minimizers as int) > 0 && !isOn(params.kraken2_report_minimizer_data)) {
         error 'kraken2_min_distinct_minimizers needs kraken2_report_minimizer_data = true'
     }
@@ -170,26 +167,18 @@ def checkParameters() {
 
 
 // A database is a directory, or a .tar.gz archive (local or a URL) that the workflow
-// unpacks once. Bracken reads the classifier's database.
+// unpacks once.
 def resolveDatabase() {
     if (params.classifier == 'krakenuniq') {
         if (isArchive(params.krakenuniq_db)) {
             return file(params.krakenuniq_db, checkIfExists: true)
         }
-        def directory = requireDirectory('krakenuniq_db', params.krakenuniq_db, ['database.kdb', 'database.idx', 'taxDB'],
+        return requireDirectory('krakenuniq_db', params.krakenuniq_db, ['database.kdb', 'database.idx', 'taxDB'],
             'It should point at a KrakenUniq database, such as one built with krakenuniq-build.')
-        if (isOn(params.run_bracken)) {
-            requireBrackenDistributions(directory, 'krakenuniq')
-        }
-        return directory
     }
     if (isArchive(params.kraken2_db)) {
         return file(params.kraken2_db, checkIfExists: true)
     }
-    def directory = requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'],
+    return requireDirectory('kraken2_db', params.kraken2_db, ['hash.k2d', 'opts.k2d', 'taxo.k2d'],
         'It should point at a Kraken2 database; prebuilt ones are listed at https://benlangmead.github.io/aws-indexes/k2')
-    if (isOn(params.run_bracken)) {
-        requireBrackenDistributions(directory, 'kraken2')
-    }
-    return directory
 }

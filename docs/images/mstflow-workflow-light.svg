@@ -34,12 +34,12 @@
 <text x="880.0" y="51.0" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">damage</text>
 <path d="M118.00 76.50 L198.00 76.50 Q220.00 76.50 235.56 92.06 L257.94 114.44 Q273.50 130.00 295.50 130.00 L352.00 130.00" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 <path d="M118.00 192.50 L198.00 192.50 Q220.00 192.50 235.56 176.94 L257.94 154.56 Q273.50 139.00 295.50 139.00 L352.00 139.00" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 130.00 L344.07 130.00 Q348.14 130.00 351.01 127.12 L368.93 109.20 Q384.14 94.00 405.64 94.00 L478.36 94.00 Q499.86 94.00 515.07 109.20 L532.99 127.12 Q535.86 130.00 539.93 130.00 L544.00 130.00" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 139.00 L345.93 139.00 Q351.86 139.00 356.06 134.81 L369.86 121.00 Q387.86 103.00 413.32 103.00 L470.68 103.00 Q496.14 103.00 514.14 121.00 L527.94 134.81 Q532.14 139.00 538.07 139.00 L544.00 139.00" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 130.00 L345.93 130.00 Q351.86 130.00 356.06 134.19 L372.66 150.80 Q387.86 166.00 409.36 166.00 L474.64 166.00 Q496.14 166.00 511.34 150.80 L527.94 134.19 Q532.14 130.00 538.07 130.00 L544.00 130.00" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M340.00 139.00 L344.07 139.00 Q348.14 139.00 351.01 141.88 L366.14 157.00 Q384.14 175.00 409.59 175.00 L474.41 175.00 Q499.86 175.00 517.86 157.00 L532.99 141.88 Q535.86 139.00 539.93 139.00 L544.00 139.00" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M532 130.0 H730" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-<path d="M532 139.0 H730" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 130.00 L344.07 130.00 Q348.14 130.00 351.01 127.12 L368.93 109.20 Q384.14 94.00 405.64 94.00 L506.36 94.00 Q527.86 94.00 543.07 109.20 L560.99 127.12 Q563.86 130.00 567.93 130.00 L572.00 130.00" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 139.00 L345.93 139.00 Q351.86 139.00 356.06 134.81 L369.86 121.00 Q387.86 103.00 413.32 103.00 L498.68 103.00 Q524.14 103.00 542.14 121.00 L555.94 134.81 Q560.14 139.00 566.07 139.00 L572.00 139.00" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 130.00 L345.93 130.00 Q351.86 130.00 356.06 134.19 L372.66 150.80 Q387.86 166.00 409.36 166.00 L502.64 166.00 Q524.14 166.00 539.34 150.80 L555.94 134.19 Q560.14 130.00 566.07 130.00 L572.00 130.00" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M340.00 139.00 L344.07 139.00 Q348.14 139.00 351.01 141.88 L366.14 157.00 Q384.14 175.00 409.59 175.00 L502.41 175.00 Q527.86 175.00 545.86 157.00 L560.99 141.88 Q563.86 139.00 567.93 139.00 L572.00 139.00" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M560 130.0 H730" stroke="#c4552f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M560 139.0 H730" stroke="#2367a6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 <text x="104.0" y="81.0" text-anchor="end" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#c4552f">Ancient DNA</text>
 <text x="104.0" y="197.0" text-anchor="end" font-size="12" font-weight="600" letter-spacing="-0.1" fill="#2367a6">Modern DNA</text>
 <path d="M168 74.0 V66.0" stroke="#c4552f" stroke-width="4.5" fill="none"/>
@@ -51,18 +51,15 @@
 <rect x="344" y="122.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
 <text x="360.0" y="112.5" text-anchor="end" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">BWA</text>
 <text x="340.0" y="161.5" text-anchor="end" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">host removal</text>
-<rect x="524" y="122.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
-<text x="524.0" y="112.5" text-anchor="start" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">Bracken</text>
-<text x="544.0" y="161.5" text-anchor="start" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">abundance</text>
-<rect x="640" y="122.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
-<text x="648.0" y="112.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">Filters</text>
-<text x="648.0" y="161.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">k-mers, taxa</text>
-<rect x="434" y="86.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
-<text x="442.0" y="76.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">Kraken2</text>
-<text x="442.0" y="125.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">classification</text>
-<rect x="434" y="158.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
-<text x="442.0" y="197.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">KrakenUniq</text>
-<text x="442.0" y="211.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">or instead</text>
+<rect x="552" y="122.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
+<text x="552.0" y="112.5" text-anchor="start" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">Filters</text>
+<text x="572.0" y="161.5" text-anchor="start" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">reads, k-mers, taxa</text>
+<rect x="448" y="86.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
+<text x="456.0" y="76.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">Kraken2</text>
+<text x="456.0" y="125.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">classification</text>
+<rect x="448" y="158.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
+<text x="456.0" y="197.5" text-anchor="middle" font-size="13" font-weight="500" letter-spacing="-0.1" fill="#1f2328">KrakenUniq</text>
+<text x="456.0" y="211.5" text-anchor="middle" font-size="11" font-weight="400" letter-spacing="-0.1" fill="#6a737d">or instead</text>
 <rect x="722" y="122.50" width="16" height="24" rx="8" fill="#ffffff" stroke="#1f2328" stroke-width="2.4"/>
 <text x="730.0" y="161.5" text-anchor="middle" font-size="13" font-weight="650" letter-spacing="-0.1" fill="#1f2328">Count table</text>
 <rect x="958" y="26" width="16" height="16" rx="8" fill="#ffffff" stroke="#c4552f" stroke-width="2.4"/>

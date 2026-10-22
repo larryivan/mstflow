@@ -301,73 +301,29 @@ class ReferenceInterfaceTests(unittest.TestCase):
             root = Path(directory)
             metadata = root / "metadata.tsv"
             write_tsv(metadata, ["sample_id"], [{"sample_id": "s1"}, {"sample_id": "s2"}])
-            bracken_header = [
-                "name",
-                "taxonomy_id",
-                "taxonomy_lvl",
-                "kraken_assigned_reads",
-                "added_reads",
-                "new_est_reads",
-                "fraction_total_reads",
-            ]
-            bracken = []
             reports = []
-            for sample, count in (("s1", 800), ("s2", 400)):
-                table = root / f"{sample}.bracken.tsv"
-                write_tsv(
-                    table,
-                    bracken_header,
-                    [
-                        {
-                            "name": "Bacteria",
-                            "taxonomy_id": "2",
-                            "taxonomy_lvl": "D",
-                            "kraken_assigned_reads": count,
-                            "added_reads": 0,
-                            "new_est_reads": count,
-                            "fraction_total_reads": 1,
-                        }
-                    ],
-                )
-                bracken.append(table)
+            for sample in ("s1", "s2"):
                 report = root / f"{sample}.kraken2.report.txt"
                 report.write_text(
                     "20.00\t200\t200\tU\t0\tunclassified\n"
                     "80.00\t800\t0\tR\t1\troot\n"
+                    "60.00\t600\t600\tG\t1301\t  Streptococcus\n"
                 )
                 reports.append(report)
 
-            run_script(
-                "build_feature_table.py",
-                "--metadata",
-                metadata,
-                "--prefix",
-                "bracken_G",
-                "--taxon-filter",
-                "none",
-                *bracken,
-                "--kraken-reports",
-                *reports,
-                cwd=root,
-            )
-            qc = {row["sample_id"]: row for row in read_tsv(root / "bracken_G_none_sample_qc.tsv")}
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", *reports, cwd=root)
+            qc = {row["sample_id"]: row for row in read_tsv(root / "kraken2_G_none_sample_qc.tsv")}
             self.assertEqual(qc["s1"]["kraken_classified_fraction"], "0.8")
-            self.assertEqual(qc["s1"]["bracken_total_reads"], "800")
+            self.assertEqual(qc["s1"]["rank_total_reads"], "600")
+            self.assertEqual(qc["s1"]["rank_fraction_of_classified"], "0.75")
 
-            incomplete = run_script(
-                "build_feature_table.py",
-                "--metadata",
-                metadata,
-                "--prefix",
-                "bad",
-                bracken[0],
-                cwd=root,
-                check=False,
-            )
+            incomplete = run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "bad",
+                                    reports[0], cwd=root, check=False)
             self.assertNotEqual(incomplete.returncode, 0)
-            self.assertIn("missing Bracken table for: s2", incomplete.stderr)
+            self.assertIn("missing Kraken report for: s2", incomplete.stderr)
 
-    def test_build_preserves_header_only_bracken_sample_as_zero(self):
+    def test_build_keeps_samples_without_counts_as_zero(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata = root / "metadata.tsv"
@@ -376,218 +332,115 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 ["sample_id"],
                 [{"sample_id": "blank1"}, {"sample_id": "blank2"}, {"sample_id": "source1"}],
             )
-            bracken_header = [
-                "name",
-                "taxonomy_id",
-                "taxonomy_lvl",
-                "kraken_assigned_reads",
-                "added_reads",
-                "new_est_reads",
-                "fraction_total_reads",
-            ]
-            bracken_files = []
-            for sample in ("blank1", "blank2"):
-                table = root / f"{sample}.bracken.tsv"
-                write_tsv(table, bracken_header, [])
-                bracken_files.append(table)
-            source_table = root / "source1.bracken.tsv"
-            write_tsv(
-                source_table,
-                bracken_header,
-                [
-                    {
-                        "name": "Bacteria",
-                        "taxonomy_id": "2",
-                        "taxonomy_lvl": "D",
-                        "kraken_assigned_reads": 8,
-                        "added_reads": 0,
-                        "new_est_reads": 8,
-                        "fraction_total_reads": 1,
-                    }
-                ],
-            )
-            bracken_files.append(source_table)
-
-            blank1_report = root / "blank1.kraken2.report.txt"
-            blank1_report.write_text(
+            # blank1 has classified reads but none at the genus; blank2 has none at all.
+            (root / "blank1.kraken2.report.txt").write_text(
                 "71.11\t64\t64\tU\t0\tunclassified\n"
                 "28.89\t26\t0\tR\t1\troot\n"
-                "7.78\t7\t7\tG\t101\t  Genus_one\n"
-                "4.44\t4\t4\tG\t102\t  Genus_two\n"
-                "2.22\t2\t2\tG\t103\t  Genus_three\n"
-                "2.22\t2\t2\tG\t104\t  Genus_four\n"
-                "2.22\t2\t2\tG\t105\t  Genus_five\n"
+                "28.89\t26\t26\tF\t1300\t  Streptococcaceae\n"
             )
-            blank2_report = root / "blank2.kraken2.report.txt"
-            blank2_report.write_text("100.00\t12\t12\tU\t0\tunclassified\n")
-            source_report = root / "source1.kraken2.report.txt"
-            source_report.write_text(
+            (root / "blank2.kraken2.report.txt").write_text("100.00\t12\t12\tU\t0\tunclassified\n")
+            (root / "source1.kraken2.report.txt").write_text(
                 "20.00\t2\t2\tU\t0\tunclassified\n"
                 "80.00\t8\t0\tR\t1\troot\n"
+                "80.00\t8\t8\tG\t1301\t  Streptococcus\n"
             )
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", "blank1.kraken2.report.txt", "blank2.kraken2.report.txt",
+                       "source1.kraken2.report.txt", cwd=root)
 
-            run_script(
-                "build_feature_table.py",
-                "--metadata",
-                metadata,
-                "--prefix",
-                "bracken_G",
-                "--taxon-filter",
-                "none",
-                *bracken_files,
-                "--kraken-reports",
-                blank1_report,
-                blank2_report,
-                source_report,
-                cwd=root,
-            )
-
-            with open(root / "bracken_G_counts.tsv", newline="") as handle:
+            with open(root / "kraken2_G_counts.tsv", newline="") as handle:
                 self.assertEqual(
                     list(csv.reader(handle, delimiter="\t")),
                     [
                         ["#OTU ID", "blank1", "blank2", "source1"],
-                        ["taxid_2__Bacteria", "0", "0", "8"],
+                        ["taxid_1301__Streptococcus", "0", "0", "8"],
                     ],
                 )
-            qc = {
-                row["sample_id"]: row
-                for row in read_tsv(root / "bracken_G_none_sample_qc.tsv")
-            }
+            qc = {row["sample_id"]: row for row in read_tsv(root / "kraken2_G_none_sample_qc.tsv")}
             self.assertEqual(qc["blank1"]["kraken_total_reads"], "90")
             self.assertEqual(qc["blank1"]["kraken_classified_reads"], "26")
             self.assertEqual(qc["blank1"]["kraken_unclassified_reads"], "64")
             self.assertEqual(qc["blank1"]["kraken_classified_fraction"], "0.288888888889")
-            self.assertEqual(qc["blank1"]["bracken_total_reads"], "0")
-            self.assertEqual(qc["blank1"]["bracken_fraction_of_kraken_classified"], "0")
+            self.assertEqual(qc["blank1"]["rank_total_reads"], "0")
+            self.assertEqual(qc["blank1"]["rank_fraction_of_classified"], "0")
             self.assertEqual(qc["blank1"]["taxon_filter_retained_reads"], "0")
             self.assertEqual(qc["blank1"]["taxon_filter_retained_fraction"], "NA")
             self.assertEqual(qc["blank1"]["raw_nonzero_features"], "0")
-            self.assertEqual(qc["blank1"]["filtered_nonzero_features"], "0")
             self.assertEqual(qc["blank2"]["kraken_total_reads"], "12")
-            self.assertEqual(qc["blank2"]["kraken_classified_reads"], "0")
             self.assertEqual(qc["blank2"]["kraken_classified_fraction"], "0")
-            self.assertEqual(qc["blank2"]["bracken_fraction_of_kraken_classified"], "NA")
-            self.assertEqual(qc["source1"]["bracken_total_reads"], "8")
+            self.assertEqual(qc["blank2"]["rank_fraction_of_classified"], "NA")
+            self.assertEqual(qc["source1"]["rank_total_reads"], "8")
             self.assertEqual(qc["source1"]["raw_nonzero_features"], "1")
 
-    def _integer_count_fixture(self, root, new_est_reads):
+    def _integer_count_fixture(self, root, genus_reads):
         metadata = root / "metadata.tsv"
         write_tsv(metadata, ["sample_id"], [{"sample_id": "one"}, {"sample_id": "two"}])
-        bracken_header = [
-            "name",
-            "taxonomy_id",
-            "taxonomy_lvl",
-            "kraken_assigned_reads",
-            "added_reads",
-            "new_est_reads",
-            "fraction_total_reads",
-        ]
-        tables = []
-        for index, sample in enumerate(("one", "two")):
-            table = root / f"{sample}.bracken.tsv"
-            write_tsv(
-                table,
-                bracken_header,
-                [
-                    {
-                        "name": "Bacteria",
-                        "taxonomy_id": "2",
-                        "taxonomy_lvl": "D",
-                        "kraken_assigned_reads": 5,
-                        "added_reads": 0,
-                        "new_est_reads": new_est_reads[index],
-                        "fraction_total_reads": 1,
-                    }
-                ],
+        reports = []
+        for sample, reads in zip(("one", "two"), genus_reads):
+            report = root / f"{sample}.kraken2.report.txt"
+            report.write_text(
+                "0.00\t0\t0\tU\t0\tunclassified\n"
+                "100.00\t10\t0\tR\t1\troot\n"
+                f"100.00\t{reads}\t0\tG\t1301\t  Streptococcus\n"
             )
-            tables.append(table)
-        return metadata, tables
+            reports.append(report)
+        return metadata, reports
 
-    def test_bracken_counts_are_exact_integers_and_reject_fractions(self):
+    def test_counts_are_exact_integers_and_reject_fractions(self):
         """Counts must survive as exact integers, and fractions must fail loudly."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             # 8, 8.0 and 8e0 are all the integer 8; a huge count must not become
             # exponent notation, which %.12g would have produced.
-            metadata, tables = self._integer_count_fixture(root, ["8.0", "9007199254740993"])
-            run_script(
-                "build_feature_table.py",
-                "--metadata", metadata,
-                "--prefix", "bracken_G",
-                "--taxon-filter", "none",
-                *tables,
-                cwd=root,
-            )
-            with open(root / "bracken_G_counts.tsv", newline="") as handle:
+            metadata, reports = self._integer_count_fixture(root, ["8.0", "9007199254740993"])
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", *reports, cwd=root)
+            with open(root / "kraken2_G_counts.tsv", newline="") as handle:
                 self.assertEqual(
                     list(csv.reader(handle, delimiter="\t")),
                     [
                         ["#OTU ID", "one", "two"],
-                        ["taxid_2__Bacteria", "8", "9007199254740993"],
+                        ["taxid_1301__Streptococcus", "8", "9007199254740993"],
                     ],
                 )
 
-            metadata, tables = self._integer_count_fixture(root, ["8e0", "3"])
-            run_script(
-                "build_feature_table.py",
-                "--metadata", metadata,
-                "--prefix", "bracken_G",
-                "--taxon-filter", "none",
-                *tables,
-                cwd=root,
-            )
-            counts = read_tsv(root / "bracken_G_counts.tsv")[0]
-            self.assertEqual(counts["one"], "8")
-
+            metadata, reports = self._integer_count_fixture(root, ["8e0", "3"])
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", *reports, cwd=root)
+            self.assertEqual(read_tsv(root / "kraken2_G_counts.tsv")[0]["one"], "8")
             # Relative abundance stays floating point.
-            relative = read_tsv(root / "bracken_G_relative_abundance.tsv")[0]
-            self.assertEqual(relative["one"], "1")
+            self.assertEqual(read_tsv(root / "kraken2_G_relative_abundance.tsv")[0]["one"], "1")
 
             # "1e999999999" is finite to Decimal but would expand to a
             # billion-digit integer inside a non-interruptible C call. It must
             # be rejected, not materialised.
-            for bad in ("", "8.5", "-1", "nan", "inf", "eight", "1e999999999"):
-                metadata, tables = self._integer_count_fixture(root, [bad, "3"])
-                failed = run_script(
-                    "build_feature_table.py",
-                    "--metadata", metadata,
-                    "--prefix", "bad",
-                    "--taxon-filter", "none",
-                    *tables,
-                    cwd=root,
-                    check=False,
-                )
+            for bad in ("8.5", "-1", "nan", "inf", "eight", "1e999999999"):
+                metadata, reports = self._integer_count_fixture(root, [bad, "3"])
+                failed = run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "bad",
+                                    "--taxon-filter", "none", *reports, cwd=root, check=False)
                 self.assertNotEqual(failed.returncode, 0, bad)
-                # Failures identify the file, the line, the field and the sample.
-                self.assertIn("one.bracken.tsv:2:new_est_reads", failed.stderr, bad)
-                self.assertIn("sample one", failed.stderr, bad)
+                # Failures identify the file, the line and the field.
+                self.assertIn("one.kraken2.report.txt:3:clade_reads", failed.stderr, bad)
 
-    def test_feature_table_is_invariant_to_bracken_file_order(self):
+    def test_feature_table_is_invariant_to_report_order(self):
         """Terminal collect() order must not change any published table."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            metadata, tables = self._integer_count_fixture(root, ["8", "3"])
+            metadata, reports = self._integer_count_fixture(root, ["8", "3"])
             outputs = [
-                "bracken_G_counts.tsv",
-                "bracken_G_relative_abundance.tsv",
-                "bracken_G_features.tsv",
-                "bracken_G_none_counts.tsv",
-                "bracken_G_none_sample_qc.tsv",
+                "kraken2_G_counts.tsv",
+                "kraken2_G_relative_abundance.tsv",
+                "kraken2_G_features.tsv",
+                "kraken2_G_none_counts.tsv",
+                "kraken2_G_none_sample_qc.tsv",
             ]
             digests = []
-            for order in (tables, list(reversed(tables))):
-                run_script(
-                    "build_feature_table.py",
-                    "--metadata", metadata,
-                    "--prefix", "bracken_G",
-                    "--taxon-filter", "none",
-                    *order,
-                    cwd=root,
-                )
+            for order in (reports, list(reversed(reports))):
+                run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                           "--taxon-filter", "none", *order, cwd=root)
                 digests.append({name: (root / name).read_bytes() for name in outputs})
             self.assertEqual(digests[0], digests[1])
-            self.assertEqual(read_tsv(root / "bracken_G_counts.tsv")[0]["one"], "8")
+            self.assertEqual(read_tsv(root / "kraken2_G_counts.tsv")[0]["one"], "8")
 
     def _source_tracker_fixture(self, root):
         metadata = root / "metadata.tsv"
@@ -626,7 +479,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             "kraken_total_reads",
             "kraken_classified_reads",
             "kraken_classified_fraction",
-            "bracken_total_reads",
+            "rank_total_reads",
             "taxon_filter_retained_reads",
             "taxon_filter_retained_fraction",
         ]
@@ -639,7 +492,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     "kraken_total_reads": 10000,
                     "kraken_classified_reads": 2000,
                     "kraken_classified_fraction": 0.2,
-                    "bracken_total_reads": 2500,
+                    "rank_total_reads": 2500,
                     "taxon_filter_retained_reads": 1200 if row[0].startswith("bone") else 1500,
                     "taxon_filter_retained_fraction": 0.8,
                 }
@@ -694,12 +547,12 @@ class ReferenceInterfaceTests(unittest.TestCase):
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)
 
-            # A preserved zero-estimate Bracken sample has no defined retained
+            # A sample with no counts at the rank has no defined retained
             # fraction. That must be reported as NA, not as an empty cell.
             qc_rows = read_tsv(feature_qc)
             for row in qc_rows:
                 if row["sample_id"] == "sink1":
-                    row["bracken_total_reads"] = "0"
+                    row["rank_total_reads"] = "0"
                     row["taxon_filter_retained_reads"] = "0"
                     row["taxon_filter_retained_fraction"] = "NA"
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
@@ -715,7 +568,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                           "--min-taxon-filter-retained-fraction", "0")
             qc = {row["input_sample_id"]: row for row in read_tsv(root / "st_qc.tsv")}
             self.assertEqual(qc["sink1"]["taxon_filter_retained_fraction"], "NA")
-            self.assertEqual(qc["sink1"]["bracken_total_reads"], "0")
+            self.assertEqual(qc["sink1"]["rank_total_reads"], "0")
             # Counts stay exact integers, never 1500.0 or 1.5e+03.
             self.assertEqual(qc["soil1"]["taxon_filter_retained_reads"], "3000")
             self.assertEqual(qc["soil1"]["input_total_count"], "700")
@@ -784,7 +637,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn("reserved result columns Unknown or SampleID", failed.stderr)
 
-    def test_all_taxon_scope_uses_bracken_yield_not_filtered_yield(self):
+    def test_all_taxon_scope_uses_rank_yield_not_filtered_yield(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)

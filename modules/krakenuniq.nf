@@ -1,7 +1,7 @@
 /*
  * KrakenUniq (Breitwieser et al. 2018): exact k-mer classification that also counts,
- * for every taxon, the unique k-mers its reads cover. It takes Kraken2's place: its
- * report goes to Bracken in the same way. Its databases may be larger than memory;
+ * for every taxon, the unique k-mers its reads cover. It takes Kraken2's place, and
+ * its report gives the counts in the same way. Its databases may be larger than memory;
  * --krakenuniq_preload_size loads them in chunks of that size.
  */
 process KRAKENUNIQ_PROFILE {

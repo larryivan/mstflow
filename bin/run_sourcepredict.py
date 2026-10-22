@@ -45,7 +45,7 @@ def main():
     parser.add_argument("--map", required=True)
     parser.add_argument("--analysis", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--rank", required=True, choices=sorted(RANKS), help="Bracken rank of the count table")
+    parser.add_argument("--rank", required=True, choices=sorted(RANKS), help="Rank of the count table")
     parser.add_argument("--neighbors", type=int, default=0, help="0 lets SourcePredict choose, if there are enough sources")
     parser.add_argument("--unknown-alpha", type=float, default=0.1)
     # GMPR, SourcePredict's own default, silently drops a sink that shares too few

@@ -3,8 +3,10 @@
 profile is deep enough to interpret.
 
 Counts are fragments (read pairs for paired-end libraries, reads for single-end),
-so every column is comparable down the row. Writes a plain TSV for users and a
-copy with a MultiQC header so the same table opens the MultiQC report.
+so every column is comparable down the row. A taxon counts towards the sample's taxa
+only with at least --min-taxon-reads reads: taxa with a read or two say nothing about
+depth. Writes a plain TSV for users and a copy with a MultiQC header so the same table
+opens the MultiQC report.
 """
 import argparse
 import csv
@@ -66,8 +68,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--sample-qc", required=True, help="feature-table sample QC TSV")
-    parser.add_argument("--taxon-filter", default="none")
+    parser.add_argument("--counts", required=True, help="count table after the taxon filter")
     parser.add_argument("--rank", default="G")
+    parser.add_argument("--min-taxon-reads", type=int, default=10)
     parser.add_argument("--min-classified", type=int, default=10000)
     parser.add_argument("--min-taxa", type=int, default=20)
     parser.add_argument("--output", default="sample_summary.tsv")
@@ -77,7 +80,10 @@ def main():
     qc = collect_qc(args.qc_files)
     with open(args.sample_qc, newline="") as handle:
         table_qc = {row["sample_id"]: row for row in csv.DictReader(handle, delimiter="\t")}
-    taxa_column = "filtered_nonzero_features" if args.taxon_filter != "none" else "raw_nonzero_features"
+    with open(args.counts, newline="") as handle:
+        table = list(csv.reader(handle, delimiter="\t"))
+    taxa_per_sample = {sample: sum(float(row[column]) >= args.min_taxon_reads for row in table[1:])
+                       for column, sample in enumerate(table[0][1:], start=1)}
     rank_name = {"G": "genera", "S": "species", "F": "families"}.get(args.rank, "taxa")
 
     header = ["sample_id", "age_group", "layout", "input", "after_trimming", "after_host_removal",
@@ -96,7 +102,7 @@ def main():
                 after_host, host_removed = trimmed, 0
             tq = table_qc.get(sample, {})
             classified = as_int(tq.get("kraken_classified_reads"))
-            taxa = as_int(tq.get(taxa_column))
+            taxa = taxa_per_sample.get(sample)
             flags = []
             if classified is not None and classified < args.min_classified:
                 flags.append("few_reads")
@@ -120,7 +126,8 @@ def main():
         "# section_name: 'MSTFlow sample summary'\n"
         "# description: 'Fragments surviving each step (read pairs for paired-end "
         "libraries). Flags mark profiles too shallow to interpret: few_reads below "
-        f"{args.min_classified:,} classified, few_{rank_name} below {args.min_taxa}.'\n"
+        f"{args.min_classified:,} classified, few_{rank_name} below {args.min_taxa} "
+        f"with {args.min_taxon_reads} reads or more.'\n"
         "# plot_type: 'table'\n"
         "# pconfig:\n"
         "#     id: 'mstflow_sample_summary_table'\n"

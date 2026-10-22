@@ -13,8 +13,7 @@ First public release.
   one study at a time are held out as sinks of known origin, and each method's coverage
   and accuracy on them are reported.
 - KrakenUniq as an alternative to Kraken2 (`--classifier krakenuniq`), with aMeta's
-  unique k-mer and read thresholds. Bracken follows either classifier; with
-  `--run_bracken false` the tables hold the classifier's own clade counts.
+  unique k-mer threshold.
 - Authentication (`--authentication_genomes`): the most abundant taxa of each ancient
   library are aligned to reference genomes with Bowtie2 and tested for ancient DNA
   damage with PyDamage, with the breadth of genome they cover. See
@@ -23,7 +22,7 @@ First public release.
   minimizers, sample by sample, and lists what it removed.
 - `-profile test` runs every step, all attribution methods and their cross-validation
   included, on excerpts of 18 published ancient and modern libraries and three sinks
-  mixed from them in known shares, with a 274-genome Kraken2/Bracken database,
+  mixed from them in known shares, with a 274-genome Kraken2 database,
   downloaded from a release asset (about 1.9 GB). The recipe is in `assets/test`, and
   `assets/test/check_mixtures.py` checks the mixtures' estimates.
 - `--kraken2_db` accepts a `.tar.gz` archive, local or a URL, such as the prebuilt
@@ -44,9 +43,15 @@ First public release.
   inferred from `fastq_2`, which may be left empty or omitted, and libraries with
   `host_action` set to `skip` need no `host_ref`. Relative paths are read relative to
   the samplesheet (paths relative to the launch directory still work).
-- Bracken runs by default and reads the classifier's database.
+- The count table holds the reads the classifier placed in each taxon at `--rank` or
+  below it; Bracken is no longer run. Its redistribution of reads placed above the rank
+  follows the composition of each sample, so in a sink mixed from two sources it moved
+  one source's reads into the other's genera. Every read counts, with no per-sample
+  minimum of reads per taxon, which would break that sum as well; the depth flag counts
+  only taxa with `--qc_min_taxon_reads` (10) reads. Tables are named `kraken2_<rank>_*`
+  or `krakenuniq_<rank>_*`.
 - Parameters are validated strictly against their declared types: booleans must be
-  `true` or `false`, and `--bracken_read_len` takes `auto` or a positive integer.
+  `true` or `false`.
   On/off options given on the command line, such as `--remove_host false`, now take
   effect; Nextflow passes them as text, which had read as on.
 - The `docker` profile runs the `linux/amd64` images on any host, including ARM.
@@ -70,12 +75,12 @@ First public release.
   Choose a scheduler in your own config instead, passed with `-c`; see docs/usage.md.
 - `--run_sourcetracker2`, `--sourcetracker2_extra_args` and `--sourcetracker2_loo`;
   cross-validation by study replaces SourceTracker2's leave-one-out.
-- `--bracken_db` and `--fragment_pair_gap`.
+- Bracken, with `--run_bracken`, `--bracken_*` and `--krakenuniq_min_reads`; and
+  `--fragment_pair_gap`.
 - The `panel_role` column with its `--attribution_*_panel_roles` options, and
   `--attribution_exclude_source_envs`/`_classes`: leave `source_sink` empty to keep a
   library out of attribution. `category` no longer stands in for `model_source_env`.
 - The samplesheet's `preprocess_mode` and `bracken_read_len` columns: the trimming
-  follows from `age_group` and `layout`, and the Bracken read length from each
-  library's reads (or `--bracken_read_len`).
+  follows from `age_group` and `layout`.
 - `attribution_excluded_samples.tsv`: `attribution_sample_qc.tsv` says which samples
   were left out and why.

@@ -22,7 +22,7 @@ def rejectReservedArgs(name, value, reservedFlags) {
 }
 
 
-// Values given on the command line arrive as text, so `--run_bracken false` is the
+// Values given on the command line arrive as text, so `--remove_host false` is the
 // string "false", which Groovy treats as true. Every on/off parameter is read here.
 def isOn(value) {
     return value instanceof Boolean ? value : value?.toString()?.trim()?.toLowerCase() == 'true'
@@ -104,23 +104,6 @@ def requireDirectory(name, value, requiredFiles, hint) {
         }
     }
     return directory
-}
-
-
-def requireBrackenDistributions(directory, classifier) {
-    def matches = java.nio.file.Files.newDirectoryStream(directory, 'database*mers.kmer_distrib')
-    def foundDistribution = matches.iterator().hasNext()
-    matches.close()
-    if (!foundDistribution) {
-        def build = classifier == 'krakenuniq'
-            ? "`bracken-build -d ${directory} -y krakenuniq -k 31 -l 100`"
-            : "`bracken-build -d ${directory} -l 100`, or use a prebuilt index, which ships them"
-        throw new IllegalArgumentException(
-            "The ${classifier} database has no Bracken database<N>mers.kmer_distrib files: ${directory}. " +
-            "Build one per read length with ${build}; or set --run_bracken false to use the " +
-            "classifier's own counts."
-        )
-    }
 }
 
 

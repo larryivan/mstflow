@@ -8,6 +8,7 @@ process SUMMARIZE_SAMPLES {
     input:
     path metadata
     path sample_qc
+    path counts
     path qc_files, stageAs: 'qc/*'
     path summarize_script
 
@@ -20,8 +21,9 @@ process SUMMARIZE_SAMPLES {
     python3 "${summarize_script}" \\
         --metadata "${metadata}" \\
         --sample-qc "${sample_qc}" \\
-        --taxon-filter ${params.taxon_filter} \\
-        --rank ${params.bracken_rank} \\
+        --counts "${counts}" \\
+        --rank ${params.rank} \\
+        --min-taxon-reads ${params.qc_min_taxon_reads} \\
         --min-classified ${params.qc_min_classified_reads} \\
         --min-taxa ${params.qc_min_taxa} \\
         qc/*

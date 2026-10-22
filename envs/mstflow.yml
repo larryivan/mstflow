@@ -12,5 +12,4 @@ dependencies:
   - adapterremoval=2.3.4
   - bwa=0.7.19
   - kraken2=2.1.6
-  - bracken=2.9
   - matplotlib=3.10.3

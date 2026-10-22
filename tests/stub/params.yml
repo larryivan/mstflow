@@ -9,7 +9,6 @@ sourceid_nmf_code: tests/stub/data/sourceid_nmf
 taxon_filter: none
 require_explicit_host_action: true
 
-bracken_threshold: 1
 attribution_label: tiny_stub
 attribution_taxon_scope: all
 attribution_min_classified_fraction: 0

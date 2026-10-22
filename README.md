@@ -13,7 +13,7 @@ and source attribution with five methods, scored on your own data.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/mstflow-workflow-dark.svg">
-  <img alt="Ancient and modern libraries are trimmed on their own lines (AdapterRemoval, fastp) and run side by side through host removal with BWA. The pair then splits into two branches, Kraken2 or KrakenUniq, and rejoins at Bracken, then the k-mer and taxon filters and one count table. An optional authentication spur of the ancient line rises from the table to Bowtie2, PyDamage and a verdict per taxon. An optional source attribution line fans out into five methods, SourceTracker2, FEAST, FastST, SourceID-NMF and SourcePredict, and gathers again for their comparison, cross-validated by study. A QC line runs underneath: FastQC before and after, the sample summary and MultiQC." src="docs/images/mstflow-workflow-light.svg" width="100%">
+  <img alt="Ancient and modern libraries are trimmed on their own lines (AdapterRemoval, fastp) and run side by side through host removal with BWA. The pair then splits into two branches, Kraken2 or KrakenUniq, and rejoins at the read, k-mer and taxon filters and one count table. An optional authentication spur of the ancient line rises from the table to Bowtie2, PyDamage and a verdict per taxon. An optional source attribution line fans out into five methods, SourceTracker2, FEAST, FastST, SourceID-NMF and SourcePredict, and gathers again for their comparison, cross-validated by study. A QC line runs underneath: FastQC before and after, the sample summary and MultiQC." src="docs/images/mstflow-workflow-light.svg" width="100%">
 </picture>
 
 ## Why MSTFlow
@@ -23,12 +23,13 @@ and source attribution with five methods, scored on your own data.
   from then on every library is counted the same way, a read pair or a collapsed read as
   one fragment, against one database. Modern libraries cut to ancient fragment lengths
   and given ancient DNA damage are attributed to the same environment as the originals,
-  oral and gut ones within three percentage points.
+  oral and gut ones within five percentage points.
   [The test](docs/design-notes.md#ancient-and-modern-libraries-in-one-analysis)
 - **Source attribution you can check.** SourceTracker2, FEAST, FastST, SourceID-NMF and
   SourcePredict run on the same table and are compared sink by sink. Cross-validation
   holds out one study's sources at a time and scores every method on them, so you can
-  see which to trust on your panel. [How it works](docs/attribution.md)
+  see which to trust on your panel, and the test data's sinks of known composition
+  check their shares. [How it works](docs/attribution.md)
 - **Authentication.** The leading taxa of each ancient library are aligned to reference
   genomes with Bowtie2 and tested for ancient DNA damage with PyDamage, so a modern
   contaminant can be told apart. [How it works](docs/authentication.md)
@@ -58,9 +59,8 @@ A samplesheet, saved as a tab-separated file with one row per library:
 | bone_01 | reads/bone_01_R1.fastq.gz | reads/bone_01_R2.fastq.gz | ancient |
 | gut_01 | reads/gut_01.fastq.gz | | modern |
 
-Then point MSTFlow at a Kraken2 database ([prebuilt indexes](https://benlangmead.github.io/aws-indexes/k2)
-include what Bracken needs; give the `.tar.gz` or its URL as it is) and a BWA-indexed
-host genome:
+Then point MSTFlow at a Kraken2 database (a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2)
+works; give the `.tar.gz` or its URL as it is) and a BWA-indexed host genome:
 
 ```bash
 nextflow run larryivan/mstflow -profile docker \
@@ -96,10 +96,15 @@ and `evaluation/evaluation.tsv` how often each was right on held-out sources:
 | method | calls made | right when it called | right overall |
 |---|--:|--:|--:|
 | SourceTracker2 | 86% | 100% | 86% |
-| FEAST | 57% | 100% | 57% |
-| FastST | 100% | 29% | 29% |
+| FEAST | 100% | 100% | 100% |
+| FastST | 100% | 100% | 100% |
 | SourceID-NMF | 0% | – | 0% |
-| SourcePredict | 14% | 100% | 14% |
+| SourcePredict | 0% | – | 0% |
+
+Only SourceTracker2 also gets the shares right: on sinks mixed from known sources it
+comes within 0.06 of their composition, while FEAST, FastST and SourceID-NMF miss by 0.5
+or more.
+[How well the shares hold](docs/attribution.md#how-well-the-shares-hold)
 
 `results/authentication/authentication.tsv` tests the leading taxa of each ancient
 library for ancient DNA damage:
@@ -121,7 +126,7 @@ Genus tables for all samples are in `results/tables/`, and every QC metric in
 ## Citation
 
 Please cite MSTFlow as given in [CITATION.cff](CITATION.cff), together with the tools it
-runs: fastp, AdapterRemoval, BWA, Kraken2 and Bracken or KrakenUniq, FastQC, MultiQC,
+runs: fastp, AdapterRemoval, BWA, Kraken2 or KrakenUniq, FastQC, MultiQC,
 Bowtie2 and PyDamage if you authenticated, and each attribution method you used
 ([references](docs/attribution.md#methods)).
 

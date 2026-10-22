@@ -16,11 +16,6 @@ launched from. Use absolute paths if the reads live elsewhere.
 The archive given to `--kraken2_db` holds no `hash.k2d` at its top level or one
 directory down. Check that it is a Kraken2 index and not, for example, a library.
 
-**`The kraken2 database has no Bracken database<N>mers.kmer_distrib files`**
-The database has no Bracken read-length models. Prebuilt indexes include them; for a
-custom database run `bracken-build -d <db> -l <read length>` once per length, or set
-`--run_bracken false` to use the classifier's own counts.
-
 **`Host FASTA is missing BWA index: ….bwt`**
 Run `bwa index host.fa` and keep the index files next to the FASTA.
 

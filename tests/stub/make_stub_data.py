@@ -72,10 +72,9 @@ def main():
     KRAKEN_DIR.mkdir(parents=True, exist_ok=True)
     for filename in ("hash.k2d", "opts.k2d", "taxo.k2d"):
         (KRAKEN_DIR / filename).write_text("mstflow stub database\n")
-    (KRAKEN_DIR / "database75mers.kmer_distrib").write_text("mstflow stub distribution\n")
     krakenuniq = TEST_DIR / "krakenuniq_stub_db"
     krakenuniq.mkdir(parents=True, exist_ok=True)
-    for filename in ("database.kdb", "database.idx", "taxDB", "database75mers.kmer_distrib"):
+    for filename in ("database.kdb", "database.idx", "taxDB"):
         (krakenuniq / filename).write_text("mstflow stub database\n")
 
     write_fastq(

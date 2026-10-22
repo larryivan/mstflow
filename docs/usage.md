@@ -39,20 +39,21 @@ read counting once; see
 
 ## References
 
-### Kraken2 and Bracken database
+### Kraken2 database
 
-Use a prebuilt index from <https://benlangmead.github.io/aws-indexes/k2>. Pass it with
-`--kraken2_db` as the downloaded `.tar.gz`, its URL, or the directory you unpacked it
-into; MSTFlow unpacks archives itself. Prebuilt indexes already contain the Bracken
-`database<N>mers.kmer_distrib` files.
+Use a prebuilt index from <https://benlangmead.github.io/aws-indexes/k2>, or any Kraken2
+database. Pass it with `--kraken2_db` as the downloaded `.tar.gz`, its URL, or the
+directory you unpacked it into; MSTFlow unpacks archives itself.
 
 Kraken2 loads the whole database into memory, so set `--kraken2_memory` to at least the
 size of `hash.k2d` plus a few GB. If a Kraken2 task is killed for memory it is retried
 once with twice as much.
 
-To build your own database, follow the Kraken2 manual, then run `bracken-build` once for
-each read length you expect (for example `-l 50` for ancient and `-l 150` for modern
-libraries). MSTFlow picks the nearest length for each sample.
+The count table holds, for each genus (`--rank`), the reads Kraken2 placed in it or in a
+species below it. Reads it could only place higher up, in a family say, are left out
+rather than guessed into a genus, and every read counts, however rare its genus, so a
+sink's counts are the sum of what its sources contribute. Bracken is not used, for the
+reason in the [design notes](design-notes.md#why-not-bracken).
 
 #### Removing poorly supported taxa
 
@@ -61,7 +62,7 @@ conserved gene, a low-complexity region, a contaminant fragment in a reference. 
 an organism that is really there are spread along its genome, so they cover many
 distinct minimizers. `--kraken2_min_distinct_minimizers` removes a taxon from a sample
 when its reads cover fewer than that; the removals are listed in
-`tables/bracken_<rank>_kmer_filter.tsv`. The filter is off by default. There is no
+`tables/kraken2_<rank>_kmer_filter.tsv`. The filter is off by default. There is no
 threshold that suits every depth and database: start low, read what the table removes,
 and, with source attribution, compare the cross-validation scores with and without it.
 
@@ -72,20 +73,9 @@ and, with source attribution, compare the cross-validation scores with and witho
 ```
 
 KrakenUniq classifies by exact k-mers and counts the unique k-mers each taxon's reads
-cover; taxa below `--krakenuniq_min_kmers` (1,000) unique k-mers or
-`--krakenuniq_min_reads` (200) reads are removed sample by sample, the thresholds aMeta
-uses. Bracken then re-estimates abundances, as after Kraken2, so the two classifiers
-give tables of the same kind. That needs Bracken's files in the KrakenUniq database:
-
-```bash
-bracken-build -d krakenuniq_db/ -y krakenuniq -k 31 -l 50
-```
-
-once per read length. The database must have been built without
-`--taxids-for-genomes` and `--taxids-for-sequences`: the taxa those options add are
-not in the taxonomy, and Bracken cannot place them. For a database without Bracken's
-files, such as aMeta's prebuilt one, `--run_bracken false` uses KrakenUniq's own clade
-counts at `--bracken_rank` instead, as aMeta does.
+cover; a taxon below `--krakenuniq_min_kmers` (1,000, aMeta's threshold) unique k-mers
+is removed sample by sample. Its table is built the same way
+as Kraken2's, from the reads it placed in each genus or below.
 KrakenUniq databases can be far larger than memory: `--krakenuniq_preload_size 32G`
 loads one in chunks of that size. Its index, `database.idx`, is always loaded whole; with
 the default minimizer length of 15 it is 8 GB. `--kraken2_cpus`, `--kraken2_memory` and

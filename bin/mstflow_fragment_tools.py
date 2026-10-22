@@ -18,11 +18,9 @@ import re
 import sys
 from collections import Counter
 from contextlib import ExitStack
-from pathlib import Path
 
 
 DNA_RUN = re.compile(r"[ACGT]+", re.IGNORECASE)
-BRACKEN_DISTRIBUTION = re.compile(r"^database(\d+)mers\.kmer_distrib$")
 DUMMY_MATE_MARKER = "mstflow_internal_dummy_mate=1"
 DEFAULT_GZIP_LEVEL = 6
 REVERSE_COMPLEMENT = str.maketrans(
@@ -316,7 +314,6 @@ class FragmentMetrics:
         self.dropped = 0
         self.informative_lengths = Counter()
         self.equivalent_lengths = Counter()
-        self.bracken_read_lengths = Counter()
         self.confidence_denominators = Counter()
 
     def keep(self, records) -> bool:
@@ -336,9 +333,6 @@ class FragmentMetrics:
         # A contiguous read of this length supplies the same number of k-mer windows.
         windows = sum(kmer_windows(mate, self.kmer_length) for mate in mates)
         self.equivalent_lengths[windows + self.kmer_length - 1 if windows else 0] += 1
-        # Bracken's -r is the length of one sequenced read, also for paired-end
-        # data, so each mate is its own observation.
-        self.bracken_read_lengths.update(map(len, mates))
         self.confidence_denominators[kraken_confidence_denominator(records, self.kmer_length)] += 1
         return True
 
@@ -357,8 +351,6 @@ class FragmentMetrics:
             "mean_informative_bases": mean(self.informative_lengths),
             "median_kmer_equivalent_read_length": median(self.equivalent_lengths),
             "mean_kmer_equivalent_read_length": mean(self.equivalent_lengths),
-            "median_bracken_read_length": median(self.bracken_read_lengths),
-            "mean_bracken_read_length": mean(self.bracken_read_lengths),
             # Kraken2's confidence denominator for the records this step submits:
             # required_score = ceil(kraken2_confidence * this value).
             "median_kraken_confidence_denominator": median(self.confidence_denominators),
@@ -414,69 +406,6 @@ def collect_stats(args):
     for records in fragments(args.single, args.r1, args.r2):
         metrics.keep(records)
     return metrics.summary()
-
-
-def read_metric(path: str, name: str) -> float:
-    with open(path, encoding="utf-8", newline="") as handle:
-        rows = csv.DictReader(handle, delimiter="\t")
-        for row in rows:
-            if row.get("metric") == name:
-                return float(row["value"])
-    raise ValueError(f"{path}: missing required metric {name!r}")
-
-
-def select_bracken_length(args):
-    target = read_metric(args.stats, "median_bracken_read_length")
-    available = {}
-    for candidate in Path(args.database).glob("database*mers.kmer_distrib"):
-        match = BRACKEN_DISTRIBUTION.match(candidate.name)
-        if match:
-            # The selected model is an interface between two separate
-            # processes. Record only its stable database-relative basename:
-            # task-local absolute staging paths vary across retries and would
-            # otherwise perturb checksums and downstream cache keys.
-            available[int(match.group(1))] = candidate.name
-    if not available:
-        raise ValueError(
-            f"no database{{N}}mers.kmer_distrib files found in Bracken database: {args.database}"
-        )
-
-    requested = str(args.requested).strip().lower()
-    if requested == "auto":
-        if target <= 0:
-            raise ValueError(f"cannot select Bracken distribution from zero-length reads in {args.stats}")
-        # Stable tie break: prefer the shorter distribution at equal distance.
-        selected = min(available, key=lambda value: (abs(value - target), value))
-        selection_mode = "nearest_per_sample"
-    else:
-        try:
-            selected = int(requested)
-        except ValueError as exc:
-            raise ValueError("Bracken read length must be 'auto' or a positive integer") from exc
-        if selected <= 0:
-            raise ValueError("Bracken read length must be a positive integer")
-        if selected not in available:
-            options = ", ".join(str(value) for value in sorted(available))
-            raise ValueError(
-                f"requested Bracken read length {selected} is unavailable in {args.database}; "
-                f"available lengths: {options}"
-            )
-        selection_mode = "fixed"
-
-    with open(args.output, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(
-            [
-                "sample_id",
-                "observed_median_bracken_read_length",
-                "selected_bracken_read_length",
-                "selection_mode",
-                "distribution_file",
-            ]
-        )
-        writer.writerow(
-            [args.sample_id, f"{target:.12g}", selected, selection_mode, available[selected]]
-        )
 
 
 def add_gzip_level_option(parser):
@@ -550,14 +479,6 @@ def build_parser():
     add_gzip_level_option(host)
     host.set_defaults(func=filter_host_sam)
 
-    bracken = subparsers.add_parser("select-bracken-length", help="select a reproducible Bracken model")
-    bracken.add_argument("--stats", required=True)
-    bracken.add_argument("--database", required=True)
-    bracken.add_argument("--requested", default="auto")
-    bracken.add_argument("--sample-id", required=True)
-    bracken.add_argument("--output", required=True)
-    bracken.set_defaults(func=select_bracken_length)
-
     return parser
 
 
@@ -571,10 +492,7 @@ def main():
     if getattr(args, "minimum_mapq", 0) < 0:
         parser.error("--minimum-mapq must be non-negative")
     try:
-        # Every subcommand but select-bracken-length returns metrics for --stats.
-        metrics = args.func(args)
-        if metrics is not None:
-            write_metrics(args.stats, metrics)
+        write_metrics(args.stats, args.func(args))
     except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

@@ -38,7 +38,7 @@ process PREPARE_KRAKEN_INPUT {
         """
     """
     ${stubReads}
-    printf 'metric\tvalue\nretained_fragments\t1\nmedian_informative_bases\t75\nmedian_kmer_equivalent_read_length\t75\nmedian_bracken_read_length\t75\nmedian_kraken_confidence_denominator\t41\n' > ${id}.kraken_input.read_length.tsv
+    printf 'metric\tvalue\nretained_fragments\t1\nmedian_informative_bases\t75\nmedian_kmer_equivalent_read_length\t75\nmedian_kraken_confidence_denominator\t41\n' > ${id}.kraken_input.read_length.tsv
     printf '"${task.process}":\n    stub: "true"\n' > ${id}.prepare_kraken_input.versions.yml
     """
 }
