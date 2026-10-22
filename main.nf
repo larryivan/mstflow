@@ -115,7 +115,7 @@ workflow {
 
 // Constraints between parameters, which the schema cannot express.
 def checkParameters() {
-    ['min_length_ancient', 'min_length_modern', 'kraken2_min_read_len'].each { name ->
+    ['min_length', 'kraken2_min_read_len'].each { name ->
         if ((params[name] as int) < (params.kraken2_kmer_len as int)) {
             error "Parameter '${name}' (${params[name]}) must be at least kraken2_kmer_len (${params.kraken2_kmer_len})"
         }

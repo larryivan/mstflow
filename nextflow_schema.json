@@ -92,15 +92,9 @@
             "type": "object",
             "fa_icon": "fas fa-cut",
             "properties": {
-                "min_length_modern": {
+                "min_length": {
                     "type": "integer",
-                    "description": "Minimum read length after trimming, modern libraries.",
-                    "default": 50,
-                    "minimum": 1
-                },
-                "min_length_ancient": {
-                    "type": "integer",
-                    "description": "Minimum fragment length after trimming, ancient libraries.",
+                    "description": "Shortest read kept after trimming, for ancient and modern libraries alike.",
                     "default": 35,
                     "minimum": 1
                 },

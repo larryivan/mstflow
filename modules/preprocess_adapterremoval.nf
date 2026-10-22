@@ -20,6 +20,8 @@ process ADAPTERREMOVAL_RAW {
     def files = readList.size() == 2
         ? "--file1 \"${readList[0]}\" --file2 \"${readList[1]}\" --collapse --collapse-deterministic"
         : "--file1 \"${readList[0]}\""
+    // Recent Illumina instruments write quality 42 ('K'); AdapterRemoval rejects anything
+    // above 41 unless told otherwise.
     """
     mkdir -p adapterremoval_raw
     AdapterRemoval \
@@ -29,7 +31,8 @@ process ADAPTERREMOVAL_RAW {
         --trimns \
         --trimqualities \
         --minquality 20 \
-        --minlength ${params.min_length_ancient} \
+        --qualitymax 42 \
+        --minlength ${params.min_length} \
         --gzip \
         ${params.adapterremoval_extra_args} \
         > "${id}.adapterremoval.log" 2>&1

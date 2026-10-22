@@ -36,8 +36,7 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--min_length_modern` | Minimum read length after trimming, modern libraries. | integer | `50` |
-| `--min_length_ancient` | Minimum fragment length after trimming, ancient libraries. | integer | `35` |
+| `--min_length` | Shortest read kept after trimming, for ancient and modern libraries alike. | integer | `35` |
 | `--ancient_pe_mode` | How ancient paired-end libraries are counted. `collapsed_only` keeps merged molecules only. `all_fragments` also keeps complete unmerged pairs, each submitted to Kraken2 as one paired record. See docs/design-notes.md. | `collapsed_only` / `all_fragments` | `collapsed_only` |
 
 <details><summary>Advanced</summary>

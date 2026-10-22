@@ -49,11 +49,17 @@ First public release.
   On/off options given on the command line, such as `--remove_host false`, now take
   effect; Nextflow passes them as text, which had read as on.
 - The `docker` profile runs the `linux/amd64` images on any host, including ARM.
+- One minimum read length, `--min_length` (35 bp), for ancient and modern libraries
+  alike, in place of `--min_length_ancient` and `--min_length_modern` (50 bp).
 - The workflow is split into preprocessing, profiling and attribution subworkflows.
 - SourceTracker2 options are now attribution options (`--attribution_*`) shared by
   every method, and its priors and sampling settings are parameters
   (`--sourcetracker2_alpha2` and others) instead of free-form extra arguments. Results
   move from `source_attribution/sourcetracker2/` to `attribution/`.
+
+### Fixed
+- Ancient libraries sequenced on instruments that write quality 42 ('K'), such as the
+  HiSeq 4000, HiSeq X and NovaSeq, no longer stop AdapterRemoval.
 
 ### Removed
 - The `slurm`, `slurm_conda`, `slurm_apptainer` and `slurm_singularity` profiles.

@@ -29,7 +29,7 @@ process PREPROCESS_FASTP {
         --cut_front --cut_tail \\
         --cut_window_size 4 \\
         --cut_mean_quality 20 \\
-        --length_required ${params.min_length_modern} \\
+        --length_required ${params.min_length} \\
         --thread ${task.cpus} \\
         --html "${id}.fastp.html" \\
         --json "${id}.fastp.json" \\
