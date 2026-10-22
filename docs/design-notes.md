@@ -15,67 +15,24 @@ Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`: only 
 ## Ancient and modern libraries in one analysis
 
 Source panels for ancient samples are mostly modern, so an ancient sink has to be
-attributed against modern sources. The two kinds of library differ in three technical
-ways: ancient fragments are short (median 72 bp in the test data, against reads of 76
-to 151 bp in its modern libraries), they carry deamination at their ends, and they are
-trimmed by AdapterRemoval rather than fastp. Both are trimmed to the same minimum length
-(`--min_length`, 35 bp), counted in fragments and classified against one database.
-
-To check that the rest does not bias attribution, each of the seven modern source
-libraries in the test data was made into two ancient-like libraries. Every read 1 was
-cut to a length drawn from the test data's ancient fragments; in the second library its
-ends were also given C-to-T and G-to-A changes, with probability 0.30 × 0.55^i at i bases
-from the end. Both were written as read pairs that run into the adapters, so they took
-the ancient branch of the workflow, and each was attributed with SourceTracker2 with its
-own study's sources left out, as in cross-validation.
-
-| Library | Profile change (Bray-Curtis) | Two libraries of one environment | Own environment: modern / cut / cut and damaged |
-|---|--:|--:|---|
-| oral_1 | 0.02 | 0.61 | 0.97 / 0.96 / 0.97 |
-| oral_2 | 0.03 | 0.68 | 0.99 / 0.99 / 0.99 |
-| gut_1 | 0.04 | 0.86 | 0.94 / 0.96 / 0.96 |
-| gut_2 | 0.04 | 0.68 | 0.62 / 0.57 / 0.57 |
-| gut_3 | 0.04 | 0.65 | 0.87 / 0.87 / 0.83 |
-| soil_1 | 0.11 | 0.24 | 0.94 / 0.89 / 0.89 |
-| soil_2 | 0.17 | 0.24 | 0.88 / too few counts |
-
-The test data has a single soil study, so each soil library was attributed with the
-other as the only soil source.
-
-For oral and gut libraries, cutting to ancient lengths changed the genus profile more
-than ten times less than two libraries of one environment differ, and the estimate by
-at most five percentage points; damage added little. Short reads are classified less
-often (57% of oral_1 fell to 43%), and soil, of which only 3 to 6% is classified with
-this database, lost more of its profile: soil_1 cut short still went to soil, while
-soil_2 kept too few counts to be attributed at all. What remains between an ancient
-sink and a modern source is the biology that attribution is meant to measure.
+attributed against modern sources. Both kinds of library are trimmed to the same minimum
+length (`--min_length`, 35 bp), counted in fragments and classified against one
+database. Modern libraries cut to ancient lengths and damaged in silico are attributed
+as the originals are; [validation](validation.md#ancient-and-modern-libraries-in-one-analysis)
+has the test.
 
 ## Why not Bracken
 
 Bracken re-estimates abundances by moving the reads a classifier could only place at a
 family or higher down to the genera below, in proportion to the genera found in the
 same sample. That suits a profile of one sample, but a sink is a mixture, and the reads
-of one source get moved into the genera of another. In the test data's gut and soil
-mixture (10% and 90% of read pairs), Bracken gave Bradyrhizobium, a soil genus, 275
-reads where the soil's share of its own count was 705, and Escherichia, a gut genus, 397
-where 45 were expected: the soil's reads placed only to Proteobacteria went to Escherichia once
-the faeces brought it in. SourceTracker2 then put 12% of the mixture in soil, against
-the 24% its reads predicted.
-
-A classifier places each read on its own, so a mixture's counts are the sum of its
-sources' counts. With the classifier's own counts, every mixture in the test data came
-within 0.06 of its known composition, and the soil one within 0.01; in cross-validation
-FEAST rose from 57% to 100% correct and FastST from 29% to 100%. The cost is that reads
-placed only above the rank are not counted, which leaves poorly covered samples, such as
-soils in a small database, with fewer counts.
-
-For the same reason the table keeps every read, with no minimum per taxon and sample.
-Bracken drops taxa below 10 reads; applied to the classifier's counts, that minimum
-alone brought FEAST back to 57% and FastST to 29%, and moved the ancient-like mixture
-0.11 from its composition. A genus with 15 reads in a source and 7 in a mixture of it
-is kept in one and dropped from the other, so the counts no longer add up, and FEAST and
-FastST lean on rare genera. Rare genera do make a shallow sample look rich, so the depth
-flag in the sample summary counts only taxa with `--qc_min_taxon_reads` (10) reads.
+of one source get moved into the genera of another. A classifier places each read on its
+own, so with its counts a mixture's counts are the sum of its sources' counts. For the
+same reason the table has no minimum of reads per taxon and sample, which Bracken also
+applies: a genus kept in a source can fall below it in a mixture of that source. The
+cost is that reads placed only above the rank are not counted, which leaves poorly
+covered samples with fewer counts. [Validation](validation.md#choices-the-tests-decided)
+measures both choices.
 
 ## Why `all_fragments` uses native paired input
 

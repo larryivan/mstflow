@@ -100,22 +100,12 @@ paper reports.
 ## How well the shares hold
 
 Cross-validation asks whether a method names the right environment for a held-out
-source. Whether its shares are right shows only on sinks of known composition. The test
-data has three, mixed from libraries outside the source panel (see
-[the test data](../assets/test/README.md#mixtures)); their expected shares follow from
-how many counts each library brings. The largest error of each method:
-
-| Method | Largest error | |
-|---|--:|---|
-| SourceTracker2 | 0.06 | within 0.02 on the modern mixtures; the ancient-like one leans 0.06 to gut, whose short reads are classified more often |
-| FEAST | 0.56 | puts 39 to 56% of each mixture in its unknown source |
-| FastST | 0.52 | gives the dominant source far too much: 0.80 to 0.90 oral where 0.42 is |
-| SourceID-NMF | 0.93 | puts about 90% in its unknown source |
-| SourcePredict | – | gives the probability of each environment, not shares |
-
-Only SourceTracker2's shares can be read as proportions here. The other methods' calls
-are useful as a check on it, as cross-validation shows, but not their numbers.
-`assets/test/check_mixtures.py` repeats this check on any run of the test data.
+source; whether its shares are right shows only on sinks of known composition. On the
+test data's mixtures SourceTracker2 comes within 0.06 of the composition, while FEAST and
+SourceID-NMF put much of each mixture in their unknown source and FastST gives the
+dominant source far too much ([validation](validation.md#shares-on-sinks-of-known-composition)).
+Read SourceTracker2's shares as proportions, and the other methods' calls as a check on
+its call.
 
 ## Known behaviour of each method
 

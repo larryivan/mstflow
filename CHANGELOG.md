@@ -36,7 +36,9 @@ First public release.
 - A summary printed at the end of each run: where the results are and which samples
   were flagged.
 - Tasks killed for memory or time are retried once with twice the resources.
-- MIT licence, `CITATION.cff`, CI, and documentation under `docs/`.
+- MIT licence, `CITATION.cff`, CI, and documentation under `docs/`, with
+  `docs/validation.md`: what the test data shows about the shares, the calls, and ancient
+  sinks against modern sources, with figures.
 
 ### Changed
 - Samplesheet: only `sample_id`, `fastq_1` and `age_group` are required. `layout` is

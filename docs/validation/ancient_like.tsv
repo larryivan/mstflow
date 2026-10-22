@@ -1,0 +1,8 @@
+library	environment	bray_curtis_cut	bray_curtis_cut_damaged	bray_curtis_same_environment	own_share_modern	own_share_cut	own_share_cut_damaged
+oral_1	oral	0.0216	0.0205	0.6130	0.9671	0.9602	0.9700
+oral_2	oral	0.0269	0.0261	0.6829	0.9867	0.9893	0.9869
+gut_1	gut	0.0383	0.0379	0.8620	0.9393	0.9569	0.9562
+gut_2	gut	0.0370	0.0381	0.6830	0.6166	0.5739	0.5745
+gut_3	gut	0.0355	0.0361	0.6451	0.8658	0.8740	0.8308
+soil_1	soil	0.1113	0.1142	0.2411	0.9370	0.8948	0.8943
+soil_2	soil	0.1703	0.1712	0.2411	0.8846	NA	NA

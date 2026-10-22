@@ -24,7 +24,7 @@ and source attribution with five methods, scored on your own data.
   one fragment, against one database. Modern libraries cut to ancient fragment lengths
   and given ancient DNA damage are attributed to the same environment as the originals,
   oral and gut ones within five percentage points.
-  [The test](docs/design-notes.md#ancient-and-modern-libraries-in-one-analysis)
+  [The test](docs/validation.md#ancient-and-modern-libraries-in-one-analysis)
 - **Source attribution you can check.** SourceTracker2, FEAST, FastST, SourceID-NMF and
   SourcePredict run on the same table and are compared sink by sink. Cross-validation
   holds out one study's sources at a time and scores every method on them, so you can
@@ -104,7 +104,7 @@ and `evaluation/evaluation.tsv` how often each was right on held-out sources:
 Only SourceTracker2 also gets the shares right: on sinks mixed from known sources it
 comes within 0.06 of their composition, while FEAST, FastST and SourceID-NMF miss by 0.5
 or more.
-[How well the shares hold](docs/attribution.md#how-well-the-shares-hold)
+[Validation](docs/validation.md)
 
 `results/authentication/authentication.tsv` tests the leading taxa of each ancient
 library for ancient DNA damage:
@@ -120,7 +120,7 @@ Genus tables for all samples are in `results/tables/`, and every QC metric in
 
 ## Documentation
 
-[Usage](docs/usage.md) · [Source attribution](docs/attribution.md) · [Authentication](docs/authentication.md) · [Parameters](docs/parameters.md) ·
+[Usage](docs/usage.md) · [Source attribution](docs/attribution.md) · [Authentication](docs/authentication.md) · [Validation](docs/validation.md) · [Parameters](docs/parameters.md) ·
 [Output](docs/output.md) · [Design notes](docs/design-notes.md) · [Troubleshooting](docs/troubleshooting.md)
 
 ## Citation
