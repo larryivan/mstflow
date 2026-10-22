@@ -8,7 +8,7 @@ include { BUILD_FEATURE_TABLE } from '../modules/build_feature_table'
 include { binScript; isArchive; isOn } from './utils'
 
 /*
- * Classify every molecule with Kraken2 or KrakenUniq (--classifier), re-estimate
+ * Classify every fragment with Kraken2 or KrakenUniq (--classifier), re-estimate
  * abundances at one rank with Bracken, and merge the samples into one count table.
  * Without Bracken (--run_bracken false), the classifier's own clade counts at that
  * rank are used. Taxa with too few distinct minimizers (Kraken2) or unique k-mers

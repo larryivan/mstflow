@@ -1,8 +1,8 @@
 #!/usr/bin/env nextflow
 
 /*
- * MSTFlow: metagenomic profiling of ancient and modern DNA that counts molecules,
- * not reads, followed by optional source attribution with several methods.
+ * MSTFlow: metagenomic profiling of ancient and modern DNA together, followed by
+ * optional source attribution with several methods.
  *
  *   samplesheet -> PREPROCESS -> PROFILE -> ATTRIBUTION
  *                  trimming,     Kraken2 and Bracken,    SourceTracker2, FEAST, FastST,
@@ -56,7 +56,7 @@ workflow {
         PROFILE(PREPROCESS.out.reads, metadata, channel.value(resolveDatabase()), channel.value(taxdumpNodes))
         qc_files = qc_files.mix(PROFILE.out.qc)
 
-        // One row per sample: molecules kept by each step, and depth flags.
+        // One row per sample: fragments kept by each step, and depth flags.
         SUMMARIZE_SAMPLES(
             metadata,
             PROFILE.out.sample_qc,

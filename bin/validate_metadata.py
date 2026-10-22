@@ -29,7 +29,7 @@ OUTPUT_COLUMNS = [
     "project",
 ]
 # Modern libraries are trimmed by fastp; ancient ones by AdapterRemoval, which also
-# collapses overlapping read pairs into the molecules they came from.
+# collapses overlapping read pairs into the fragments they came from.
 PREPROCESS_MODES = {
     ("modern", "PE"): "fastp_pe",
     ("modern", "SE"): "fastp_se",

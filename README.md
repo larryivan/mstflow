@@ -1,7 +1,7 @@
 <h1 align="center">MSTFlow</h1>
 
 <p align="center">
-Metagenomic profiling for ancient and modern DNA that counts molecules, not reads,<br>
+Metagenomic profiling of ancient and modern DNA in one analysis,<br>
 and source attribution with five methods, scored on your own data.
 </p>
 
@@ -18,12 +18,13 @@ and source attribution with five methods, scored on your own data.
 
 ## Why MSTFlow
 
-- **Molecules, not reads.** Overlapping ancient read pairs are collapsed into the molecules
-  they came from, and every library is counted the same way, so ancient and modern
-  samples can be compared directly.
-- **Short fragments are not lost.** Mates go to Kraken2 as native pairs, never joined
-  by an `N` spacer that would silently raise the confidence threshold for short ancient
-  fragments. [Why this matters](docs/design-notes.md)
+- **Ancient and modern samples in one analysis.** Ancient libraries are trimmed with
+  AdapterRemoval, which collapses overlapping read pairs, and modern ones with fastp;
+  from then on every library is counted the same way, a read pair or a collapsed read as
+  one fragment, against one database. Modern libraries cut to ancient fragment lengths
+  and given ancient DNA damage are attributed to the same environment as the originals,
+  oral and gut ones within three percentage points.
+  [The test](docs/design-notes.md#ancient-and-modern-libraries-in-one-analysis)
 - **Source attribution you can check.** SourceTracker2, FEAST, FastST, SourceID-NMF and
   SourcePredict run on the same table and are compared sink by sink. Cross-validation
   holds out one study's sources at a time and scores every method on them, so you can
@@ -32,7 +33,7 @@ and source attribution with five methods, scored on your own data.
   genomes with Bowtie2 and tested for ancient DNA damage with PyDamage, so a modern
   contaminant can be told apart. [How it works](docs/authentication.md)
 - **Reproducible by default.** Every tool runs from a container pinned by digest, and
-  each run records tool versions, parameters and the molecules kept at every step.
+  each run records tool versions, parameters and the fragments kept at every step.
 
 ## Quick start
 
@@ -83,7 +84,7 @@ from the test run:
 
 | sample_id | age | input | after trimming | classified | genera | flags |
 |---|---|--:|--:|--:|--:|---|
-| oral_1 | modern | 50,000 | 42,915 | 59.2% | 27 | ok |
+| oral_1 | modern | 50,000 | 47,911 | 57.0% | 28 | ok |
 | calculus | ancient | 50,000 | 35,438 | 16.9% | 19 | ok |
 | sediment | ancient | 50,000 | 47,583 | 4.8% | 18 | ok |
 | bone | ancient | 50,000 | 45,062 | 2.4% | 4 | few_genera |

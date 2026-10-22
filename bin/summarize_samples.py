@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""One row per sample: how many molecules survive each step, and whether the
+"""One row per sample: how many fragments survive each step, and whether the
 profile is deep enough to interpret.
 
-Counts are molecules (read pairs for paired-end libraries, reads for single-end),
+Counts are fragments (read pairs for paired-end libraries, reads for single-end),
 so every column is comparable down the row. Writes a plain TSV for users and a
 copy with a MultiQC header so the same table opens the MultiQC report.
 """
@@ -42,7 +42,7 @@ def collect_qc(files):
 
 
 def input_and_trimmed(layout, files):
-    """Molecules entering preprocessing and leaving it."""
+    """Fragments entering preprocessing and leaving it."""
     pairs = 2 if layout == "PE" else 1
     if "fastp" in files:
         summary = json.loads(files["fastp"].read_text())["summary"]
@@ -118,7 +118,7 @@ def main():
     write(Path(args.output).with_name("sample_summary_mqc.tsv"), (
         "# id: 'mstflow_sample_summary'\n"
         "# section_name: 'MSTFlow sample summary'\n"
-        "# description: 'Molecules surviving each step (read pairs for paired-end "
+        "# description: 'Fragments surviving each step (read pairs for paired-end "
         "libraries). Flags mark profiles too shallow to interpret: few_reads below "
         f"{args.min_classified:,} classified, few_{rank_name} below {args.min_taxa}.'\n"
         "# plot_type: 'table'\n"

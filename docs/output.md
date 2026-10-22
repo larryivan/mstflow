@@ -4,7 +4,7 @@ Everything is written under `--outdir` (default `results/`). Start with these.
 
 | Path | What it is |
 |---|---|
-| `summary/sample_summary.tsv` | One row per sample: molecules after trimming and host removal, host fraction, classified fraction, taxa detected, and flags |
+| `summary/sample_summary.tsv` | One row per sample: fragments after trimming and host removal, host fraction, classified fraction, taxa detected, and flags |
 | `tables/` | Abundance tables across all samples |
 | `attribution/<label>/` | With `--attribution_methods`: every method's estimates, calls and their agreement, and with `--attribution_cv` how often each method was right; see [source attribution](attribution.md#outputs) |
 | `authentication/authentication.tsv` | With `--authentication_genomes`: whether the leading taxa of each ancient library show ancient DNA damage; see [authentication](authentication.md#output) |
@@ -14,11 +14,11 @@ Everything is written under `--outdir` (default `results/`). Start with these.
 
 | Column | Meaning |
 |---|---|
-| `input` | Molecules in the raw files (read pairs for paired-end libraries) |
-| `after_trimming` | Molecules left after adapter and quality trimming; for ancient paired-end libraries, collapsed molecules |
-| `after_host_removal` | Molecules left after removing host alignments |
-| `host_fraction` | Share of trimmed molecules that aligned to the host |
-| `classified`, `classified_fraction` | Molecules the classifier assigned to a taxon |
+| `input` | Fragments in the raw files (read pairs for paired-end libraries) |
+| `after_trimming` | Fragments left after adapter and quality trimming; for ancient paired-end libraries, collapsed reads |
+| `after_host_removal` | Fragments left after removing host alignments |
+| `host_fraction` | Share of trimmed fragments that aligned to the host |
+| `classified`, `classified_fraction` | Fragments the classifier assigned to a taxon |
 | `genera` | Taxa detected at `--bracken_rank` (named `species`, `families` or `taxa` for other ranks), after the taxon filter if one is set |
 | `flags` | `ok`, or why the profile is too shallow to interpret: `few_reads` (fewer than `--qc_min_classified_reads`) or `few_genera` (fewer than `--qc_min_taxa`) |
 
@@ -44,8 +44,8 @@ With `--run_bracken false` the files start with the classifier, `kraken2_` or
 
 | Directory | Contents |
 |---|---|
-| `preprocess/fastp/`, `preprocess/adapterremoval/` | Trimming reports and molecule counts |
-| `host_removed/` | Host-removal logs and molecule counts |
+| `preprocess/fastp/`, `preprocess/adapterremoval/` | Trimming reports and fragment counts |
+| `host_removed/` | Host-removal logs and fragment counts |
 | `kraken2/` | Kraken2 reports (with and without minimizer data), read-length and confidence statistics |
 | `bracken/` | Per-sample Bracken estimates, the read-length model chosen, and its status |
 | `krakenuniq/` | With `--classifier krakenuniq`: KrakenUniq reports, with unique k-mers per taxon |

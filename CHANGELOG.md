@@ -30,7 +30,7 @@ First public release.
   URLs.
 - `--help`, with parameter types, defaults and accepted values, and validation of every
   parameter against `nextflow_schema.json`.
-- `summary/sample_summary.tsv`: molecules after each step, classified fraction, taxa
+- `summary/sample_summary.tsv`: fragments after each step, classified fraction, taxa
   detected and depth flags for every sample, also shown in the MultiQC report.
   Thresholds: `--qc_min_classified_reads`, `--qc_min_taxa`.
 - A summary printed at the end of each run: where the results are and which samples

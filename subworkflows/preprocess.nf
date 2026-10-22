@@ -8,10 +8,10 @@ include { FILTER_HOST_ALIGNMENTS } from '../modules/filter_host_alignments'
 include { binScript; hostBundleFor; hostReferenceFor; isOn } from './utils'
 
 /*
- * Trim every library, collapse overlapping ancient read pairs into the molecules they
+ * Trim every library, collapse overlapping ancient read pairs into the fragments they
  * came from, and remove host reads, with FastQC before and after. Modern libraries go
  * through fastp and ancient ones through AdapterRemoval; both leave one FASTQ per
- * fragment class, counted in molecules.
+ * fragment class, counted in fragments.
  */
 workflow PREPROCESS {
     take:
@@ -73,5 +73,5 @@ workflow PREPROCESS {
     emit:
     reads       = clean                                                         // tuple(meta, [reads]) after host removal
     qc          = fastqc.mix(trimming_logs)                                     // for MultiQC
-    step_counts = trimming_logs.mix(NORMALIZE_ADAPTERREMOVAL.out.qc).mix(host_qc) // molecules kept by each step
+    step_counts = trimming_logs.mix(NORMALIZE_ADAPTERREMOVAL.out.qc).mix(host_qc) // fragments kept by each step
 }

@@ -37,7 +37,7 @@ hidden from `--help` unless `--showHidden` is given.
 | Option | Description | Type | Default |
 |---|---|---|---|
 | `--min_length` | Shortest read kept after trimming, for ancient and modern libraries alike. | integer | `35` |
-| `--ancient_pe_mode` | How ancient paired-end libraries are counted. `collapsed_only` keeps merged molecules only. `all_fragments` also keeps complete unmerged pairs, each submitted to Kraken2 as one paired record. See docs/design-notes.md. | `collapsed_only` / `all_fragments` | `collapsed_only` |
+| `--ancient_pe_mode` | How ancient paired-end libraries are counted. `collapsed_only` keeps merged reads only. `all_fragments` also keeps complete unmerged pairs, each submitted to Kraken2 as one paired record. See docs/design-notes.md. | `collapsed_only` / `all_fragments` | `collapsed_only` |
 
 <details><summary>Advanced</summary>
 
@@ -193,7 +193,7 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--qc_min_classified_reads` | Flag samples with fewer classified molecules than this. | integer | `10000` |
+| `--qc_min_classified_reads` | Flag samples with fewer classified fragments than this. | integer | `10000` |
 | `--qc_min_taxa` | Flag samples with fewer taxa (at bracken_rank, after the taxon filter) than this. Shallow profiles carry little information, and downstream attribution of them is unreliable. | integer | `20` |
 
 ## Containers

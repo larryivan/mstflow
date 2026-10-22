@@ -3,12 +3,53 @@
 Why MSTFlow does some things the way it does. None of this is needed to run the
 workflow; it is here for anyone who wants to check the reasoning or change it.
 
-## Counting molecules
+## Counting fragments
 
-Every count in MSTFlow is a molecule: a read pair from a paired-end library is one
-molecule, and so is a single read from a single-end library.
+Every count in MSTFlow is a sequenced fragment: a read pair from a paired-end library is
+one fragment, and so are a collapsed read and a single read from a single-end library.
+PCR duplicates are not removed, so a molecule copied several times before sequencing is
+counted several times.
 
-Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`: only read pairs that overlap and collapse into one molecule are kept. The excluded singleton and unmerged counts are reported. The optional `all_fragments` mode retains all complete molecular fragments (collapsed reads and complete unmerged pairs), preserves pairing through host removal, and submits each surviving fragment as one native Kraken2 `--paired` record. Orphan singletons are quantified but excluded, matching modern paired-end handling.
+Ancient paired-end libraries default to `ancient_pe_mode: collapsed_only`: only read pairs that overlap and collapse into one fragment are kept. The excluded singleton and unmerged counts are reported. The optional `all_fragments` mode retains all complete molecular fragments (collapsed reads and complete unmerged pairs), preserves pairing through host removal, and submits each surviving fragment as one native Kraken2 `--paired` record. Orphan singletons are quantified but excluded, matching modern paired-end handling.
+
+## Ancient and modern libraries in one analysis
+
+Source panels for ancient samples are mostly modern, so an ancient sink has to be
+attributed against modern sources. The two kinds of library differ in three technical
+ways: ancient fragments are short (median 72 bp in the test data, against reads of 76
+to 151 bp in its modern libraries), they carry deamination at their ends, and they are
+trimmed by AdapterRemoval rather than fastp. Both are trimmed to the same minimum length
+(`--min_length`, 35 bp), counted in fragments and classified against one database, and
+Bracken's read-length model is chosen for each library.
+
+To check that the rest does not bias attribution, each of the seven modern source
+libraries in the test data was made into two ancient-like libraries. Every read 1 was
+cut to a length drawn from the test data's ancient fragments; in the second library its
+ends were also given C-to-T and G-to-A changes, with probability 0.30 × 0.55^i at i bases
+from the end. Both were written as read pairs that run into the adapters, so they took
+the ancient branch of the workflow, and each was attributed with SourceTracker2 with its
+own study's sources left out, as in cross-validation.
+
+| Library | Profile change (Bray-Curtis) | Two libraries of one environment | Own environment: modern / cut / cut and damaged |
+|---|--:|--:|---|
+| oral_1 | 0.02 | 0.61 | 0.94 / 0.93 / 0.96 |
+| oral_2 | 0.04 | 0.68 | 0.98 / 0.98 / 0.99 |
+| gut_1 | 0.04 | 0.84 | 0.94 / 0.96 / 0.95 |
+| gut_2 | 0.04 | 0.70 | 0.60 / 0.61 / 0.57 |
+| gut_3 | 0.05 | 0.61 | 0.88 / 0.86 / 0.90 |
+| soil_1 | 0.22 | 0.31 | 0.73 / 0.80 / 0.83 |
+| soil_2 | 0.21 | 0.31 | 0.80 / 0.91 / 0.92 |
+
+The test data has a single soil study, so each soil library was attributed with the
+other as the only soil source.
+
+For oral and gut libraries, cutting to ancient lengths changed the genus profile more
+than ten times less than two libraries of one environment differ, and the estimate by
+at most three percentage points; damage added nothing. Short reads are classified less
+often (57% of oral_1 fell to 43%), and soil, of which only 3 to 6% is classified with
+this database, lost more of its profile, yet its estimates rose rather than fell. What
+remains between an ancient sink and a modern source is the biology that attribution
+is meant to measure.
 
 ## Why `all_fragments` uses native paired input
 

@@ -32,8 +32,9 @@ samplesheet, so a sheet and its reads can be moved together; this also works whe
 samplesheet itself is a URL.
 
 Ancient libraries are adapter-trimmed and, if paired, their overlapping mates are
-collapsed into single molecules with AdapterRemoval. Modern libraries are trimmed with
-fastp. From then on every library is counted in molecules; see
+collapsed into single reads with AdapterRemoval. Modern libraries are trimmed with
+fastp. From then on every library is counted in fragments, a read pair or a collapsed
+read counting once; see
 [design notes](design-notes.md).
 
 ## References
