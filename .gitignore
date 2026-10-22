@@ -49,6 +49,8 @@ assets/test/build/
 *.pac
 *.sa
 *.fai
+*.bt2
+*.bt2l
 
 # Archives and images
 *.gz

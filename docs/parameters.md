@@ -109,8 +109,16 @@ hidden from `--help` unless `--showHidden` is given.
 | Option | Description | Type | Default |
 |---|---|---|---|
 | `--taxon_filter` | Restrict the filtered tables to bacteria and archaea. | `none` / `prokaryote` | `none` |
-| `--taxdump` | NCBI taxdump: a directory with nodes.dmp (and names.dmp, for SourcePredict), or the nodes.dmp file itself, with the others beside it; local or a URL. Needed for `--taxon_filter prokaryote` and for SourcePredict. Use the snapshot the classifier database was built from. | string |  |
+| `--taxdump` | NCBI taxdump: a directory with nodes.dmp (and names.dmp, for SourcePredict), or the nodes.dmp file itself, with the others beside it; local or a URL. Needed for `--taxon_filter prokaryote`, SourcePredict and authentication. Use the snapshot the classifier database was built from. | string |  |
 | `--drop_taxids` | Comma-separated taxon IDs dropped from every table. | string or integer | `0,1` |
+
+## Authentication (optional)
+
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--authentication_genomes` | Reference genomes of the taxa to authenticate: a FASTA, plain or gzipped, whose headers carry `kraken:taxid\|<taxid>`; local or a URL. A Bowtie2 index beside it (`<fasta>.1.bt2` and the rest) is used when present, and built otherwise. Needs `--taxdump`. See docs/authentication.md. | string |  |
+| `--authentication_top_taxa` | Authenticate this many of the most abundant taxa in each ancient library. | integer | `10` |
+| `--authentication_min_reads` | A taxon needs this many reads in the count table to be chosen, and this many aligned reads for its damage to be tested. | integer | `100` |
 
 ## Source attribution (optional)
 
@@ -207,5 +215,7 @@ hidden from `--help` unless `--showHidden` is given.
 | `--container_sourcepredict` | Container image for SourcePredict. | string |  |
 | `--container_attribution` | Container image for FEAST, FastST and SourceID-NMF. | string |  |
 | `--container_krakenuniq` | Container image for KrakenUniq. | string |  |
+| `--container_bowtie2` | Container image for Bowtie2 and samtools. | string |  |
+| `--container_pydamage` | Container image for PyDamage. | string |  |
 
 </details>

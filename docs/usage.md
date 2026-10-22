@@ -171,6 +171,17 @@ Sinks the sources cannot explain well enough are reported as `ABSTAIN` rather th
 forced into a source. [Source attribution](attribution.md) describes the five methods,
 their licences, how calls are made and how cross-validation scores them.
 
+## Authentication
+
+```bash
+--authentication_genomes genomes.fna.gz --taxdump taxdump/
+```
+
+aligns each ancient library to reference genomes of its most abundant taxa with Bowtie2
+and tests each taxon for ancient DNA damage with PyDamage. The genomes need Kraken-style
+headers (`>seqid|kraken:taxid|1750`); [authentication](authentication.md) has the
+details.
+
 ## Reproducibility
 
 Every run writes the validated samplesheet and the Nextflow report, timeline and trace

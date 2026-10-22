@@ -4,6 +4,7 @@ outdir: results/stub
 host_fasta: tests/stub/data/refs/chm13_tiny.fa
 kraken2_db: tests/stub/data/kraken2_stub_db
 taxdump: tests/stub/data/taxonomy
+authentication_genomes: tests/stub/data/refs/authentication.fa
 sourceid_nmf_code: tests/stub/data/sourceid_nmf
 taxon_filter: none
 require_explicit_host_action: true

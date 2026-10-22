@@ -7,6 +7,8 @@
  *   samplesheet -> PREPROCESS -> PROFILE -> ATTRIBUTION
  *                  trimming,     Kraken2 and Bracken,    SourceTracker2, FEAST, FastST,
  *                  host removal  or KrakenUniq           SourceID-NMF, SourcePredict
+ *                                          \-> AUTHENTICATION
+ *                                              Bowtie2 and PyDamage
  */
 
 include { VALIDATE_METADATA } from './modules/validate_metadata'
@@ -15,6 +17,7 @@ include { MULTIQC_REPORT } from './modules/multiqc'
 include { PREPROCESS } from './subworkflows/preprocess'
 include { PROFILE } from './subworkflows/profile'
 include { ATTRIBUTION } from './subworkflows/attribution'
+include { AUTHENTICATION } from './subworkflows/authentication'
 include {
     binScript; isArchive; isOn; metaFromRow; readListFromRow; rejectReservedArgs;
     requireBrackenDistributions; requireDirectory; splitList; taxdumpFile
@@ -62,6 +65,10 @@ workflow {
         )
         qc_files = qc_files.mix(SUMMARIZE_SAMPLES.out.multiqc)
 
+        if (params.authentication_genomes) {
+            AUTHENTICATION(PREPROCESS.out.reads, PROFILE.out.filtered_counts, metadata)
+        }
+
         if (methods) {
             ATTRIBUTION(
                 params.attribution_taxon_scope == 'all' ? PROFILE.out.all_counts : PROFILE.out.filtered_counts,
@@ -84,6 +91,7 @@ workflow {
         Summary: 'summary/sample_summary.tsv',
         Tables: 'tables/',
         Attribution: "attribution/${params.attribution_label}/",
+        Authentication: 'authentication/authentication.tsv',
         Report: 'qc/multiqc/multiqc_report.html',
     ].collect { name, path -> ["  ${name.padRight(15)} ${params.outdir}/${path}".toString(), file("${params.outdir}/${path}")] }
     run.onComplete {
@@ -147,8 +155,8 @@ def checkParameters() {
         error 'kraken2_min_distinct_minimizers needs kraken2_report_minimizer_data = true'
     }
     def methods = splitList(params.attribution_methods)
-    if (methods && !isOn(params.run_kraken2)) {
-        error 'Source attribution needs the count table, so classification must run (run_kraken2)'
+    if ((methods || params.authentication_genomes) && !isOn(params.run_kraken2)) {
+        error 'Source attribution and authentication need the count table, so classification must run (run_kraken2)'
     }
     // FEAST and FastST come from GitHub and are only packaged in the attribution image.
     def imageOnly = methods.intersect(['feast', 'fastst'])

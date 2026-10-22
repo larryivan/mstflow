@@ -13,7 +13,7 @@ and source attribution with five methods, scored on your own data.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/mstflow-workflow-dark.svg">
-  <img alt="Ancient and modern libraries are trimmed on their own lines (AdapterRemoval, fastp) and run side by side through host removal with BWA. The pair then splits into two branches, Kraken2 or KrakenUniq, and rejoins at Bracken, then the k-mer and taxon filters and one count table. An optional source attribution line fans out into five methods, SourceTracker2, FEAST, FastST, SourceID-NMF and SourcePredict, and gathers again for their comparison, cross-validated by study. A QC line runs underneath: FastQC before and after, the sample summary and MultiQC." src="docs/images/mstflow-workflow-light.svg" width="100%">
+  <img alt="Ancient and modern libraries are trimmed on their own lines (AdapterRemoval, fastp) and run side by side through host removal with BWA. The pair then splits into two branches, Kraken2 or KrakenUniq, and rejoins at Bracken, then the k-mer and taxon filters and one count table. An optional authentication spur of the ancient line rises from the table to Bowtie2, PyDamage and a verdict per taxon. An optional source attribution line fans out into five methods, SourceTracker2, FEAST, FastST, SourceID-NMF and SourcePredict, and gathers again for their comparison, cross-validated by study. A QC line runs underneath: FastQC before and after, the sample summary and MultiQC." src="docs/images/mstflow-workflow-light.svg" width="100%">
 </picture>
 
 ## Why MSTFlow
@@ -28,6 +28,9 @@ and source attribution with five methods, scored on your own data.
   SourcePredict run on the same table and are compared sink by sink. Cross-validation
   holds out one study's sources at a time and scores every method on them, so you can
   see which to trust on your panel. [How it works](docs/attribution.md)
+- **Authentication.** The leading taxa of each ancient library are aligned to reference
+  genomes with Bowtie2 and tested for ancient DNA damage with PyDamage, so a modern
+  contaminant can be told apart. [How it works](docs/authentication.md)
 - **Reproducible by default.** Every tool runs from a container pinned by digest, and
   each run records tool versions, parameters and the molecules kept at every step.
 
@@ -39,10 +42,10 @@ With [Nextflow](https://www.nextflow.io/docs/latest/install.html) ≥ 25.10.4 an
 nextflow run larryivan/mstflow -profile test,docker
 ```
 
-This runs every step, all five attribution methods and their cross-validation included,
-on excerpts of 15 published ancient and modern libraries. The first run downloads about
-1.8 GB of test data and the containers; the run itself takes about 15 minutes on a
-laptop. [The test data](assets/test/README.md)
+This runs every step, authentication and all five attribution methods with their
+cross-validation included, on excerpts of 15 published ancient and modern libraries.
+The first run downloads about 1.9 GB of test data and the containers; the run itself
+takes about 15 minutes on a laptop. [The test data](assets/test/README.md)
 
 ## Your own data
 
@@ -69,7 +72,9 @@ covers everything except FEAST, FastST and SourceID-NMF.
 
 For source attribution, add `source_sink` and `model_source_env` columns and choose the
 methods with `--attribution_methods`; see [source attribution](docs/attribution.md).
-KrakenUniq can replace Kraken2 with `--classifier krakenuniq`.
+To authenticate the leading taxa, give their reference genomes with
+`--authentication_genomes`; see [authentication](docs/authentication.md). KrakenUniq can
+replace Kraken2 with `--classifier krakenuniq`.
 
 ## What you get
 
@@ -94,19 +99,29 @@ and `evaluation/evaluation.tsv` how often each was right on held-out sources:
 | SourceID-NMF | 0% | – | 0% |
 | SourcePredict | 14% | 100% | 14% |
 
+`results/authentication/authentication.tsv` tests the leading taxa of each ancient
+library for ancient DNA damage:
+
+| sample_id | taxon | aligned reads | C→T at the first base | q-value | verdict |
+|---|---|--:|--:|--:|---|
+| calculus | Arachnia | 327 | 8.3% | 0.001 | damaged |
+| calculus | Actinomyces | 250 | 2.1% | 0.90 | no damage |
+| lab_1 | Leclercia | 1,218 | 0.6% | 0.73 | no damage |
+
 Genus tables for all samples are in `results/tables/`, and every QC metric in
 `results/qc/multiqc/multiqc_report.html`.
 
 ## Documentation
 
-[Usage](docs/usage.md) · [Source attribution](docs/attribution.md) · [Parameters](docs/parameters.md) ·
+[Usage](docs/usage.md) · [Source attribution](docs/attribution.md) · [Authentication](docs/authentication.md) · [Parameters](docs/parameters.md) ·
 [Output](docs/output.md) · [Design notes](docs/design-notes.md) · [Troubleshooting](docs/troubleshooting.md)
 
 ## Citation
 
 Please cite MSTFlow as given in [CITATION.cff](CITATION.cff), together with the tools it
-runs: fastp, AdapterRemoval, BWA, Kraken2 and Bracken or KrakenUniq, FastQC, MultiQC, and
-each attribution method you used ([references](docs/attribution.md#methods)).
+runs: fastp, AdapterRemoval, BWA, Kraken2 and Bracken or KrakenUniq, FastQC, MultiQC,
+Bowtie2 and PyDamage if you authenticated, and each attribution method you used
+([references](docs/attribution.md#methods)).
 
 MSTFlow is released under the [MIT licence](LICENSE). The attribution methods keep
 their own licences; FEAST is for non-commercial use only.

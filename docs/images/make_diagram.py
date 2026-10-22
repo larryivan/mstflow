@@ -4,9 +4,10 @@
 Ancient and modern libraries enter on their own lines, are trimmed on their own
 branch, then run side by side. After host removal the pair splits, like a line with
 two branches through the centre of town: Kraken2 on one, KrakenUniq on the other,
-and rejoins at Bracken, which follows either, then the filters and the count table. The source attribution
-line leaves the table, fans out into one track per method and gathers again for the
-comparison. A thin QC line runs underneath.
+and rejoins at Bracken, which follows either, then the filters and the count table. The
+source attribution line leaves the table, fans out into one track per method and
+gathers again for the comparison. Authentication, for ancient libraries only, is a spur
+of the ancient line that rises from the table. A thin QC line runs underneath.
 
 Conventions follow transit maps: ticks for single-line stops, capsules for stops
 shared by both lines, small rings on the method tracks; labels above, roles below;
@@ -17,11 +18,11 @@ Edit this file, not the SVGs, and re-run it.
 from math import hypot
 from pathlib import Path
 
-W, H = 1012, 268
+W, H = 1012, 292
 LW = 6                                   # line width
 GAP = 9                                  # centre-to-centre spacing of the two DNA lines
-A_TOP, M_BOT = 52.5, 168.5               # the two entry lines
-MID = 110.5                              # centre of the pair once it runs together
+A_TOP, M_BOT = 76.5, 192.5               # the two entry lines
+MID = 134.5                              # centre of the pair once it runs together
 A_Y, M_Y = MID - GAP / 2, MID + GAP / 2
 X0, XT, XB = 118, 168, 220               # line start, trim stop, bend start
 
@@ -30,11 +31,14 @@ SPLIT = 36                               # how far each branch moves off the cen
 UPPER = [("Kraken2", "classification", 442)]
 LOWER = [("KrakenUniq", "or instead", 442)]
 
-X_FAN, X_GATHER, X_END = 754, 936, 966   # the method tracks spread and gather here
+X_FAN, X_GATHER, X_END = 770, 936, 966   # the method tracks spread and gather here
 METHODS = ["SourceTracker2", "FEAST", "FastST", "SourceID-NMF", "SourcePredict"]
 FAN_STEP = 23
 
-Y_QC = 238
+Y_AUTH = 34
+AUTH_STOPS = [("Bowtie2", "align", 800), ("PyDamage", "damage", 880)]
+
+Y_QC = 262
 QC_STOPS = [("FastQC", 146), ("FastQC", X_BWA), ("sample summary", 614), ("MultiQC", X_TABLE)]
 
 THEME = {
@@ -152,6 +156,14 @@ def build(name):
     s.append(text(x_label, bottom + 24, "Source attribution", t, size=12, weight=600, fill=t["attr"]))
     s.append(role(x_label, bottom + 38, "optional", t))
 
+    # authentication: a spur of the ancient line, up from the table
+    s.append(path(rounded([(X_TABLE, MID), (X_TABLE, Y_AUTH), (X_END, Y_AUTH)], 18), t["ancient"]))
+    s.append(text(X_TABLE - 14, Y_AUTH + 4.5, "Authentication", t, size=12, weight=600, fill=t["ancient"],
+                  anchor="end"))
+    s.append(role(X_TABLE - 14, Y_AUTH + 18.5, "optional", t, anchor="end"))
+    for tool, what, x in AUTH_STOPS:
+        s += [tick(x, Y_AUTH, t["ancient"]), text(x, Y_AUTH - 17, tool, t), role(x, Y_AUTH + LW / 2 + 14, what, t)]
+
     # the DNA lines: entry, trim, host removal, then the two branches, then one table
     entry = {"ancient": [(X0, A_TOP), (XB, A_TOP), (XB + A_Y - A_TOP, A_Y), (X_BWA, A_Y)],
              "modern": [(X0, M_BOT), (XB, M_BOT), (XB + M_BOT - M_Y, M_Y), (X_BWA, M_Y)]}
@@ -182,9 +194,13 @@ def build(name):
         for tool, what, x in stops:
             s += [capsule(x, y, t), text(x, y + above, tool, t) if direction < 0 else text(x, y + below, tool, t),
                   role(x, y + below, what, t) if direction < 0 else role(x, y + below + 14, what, t)]
-    s += [capsule(X_TABLE, MID, t), text(X_TABLE, MID + above, "Count table", t, weight=650)]
+    s += [capsule(X_TABLE, MID, t), text(X_TABLE, MID + below, "Count table", t, weight=650)]
 
-    # the end of the attribution line
+    # the ends of the authentication and attribution lines
+    s += [f'<rect x="{X_END - 8}" y="{Y_AUTH - 8}" width="16" height="16" rx="8" fill="{t["st_fill"]}" '
+          f'stroke="{t["ancient"]}" stroke-width="2.4"/>',
+          text(X_END, Y_AUTH - 17, "Verdict", t, weight=650),
+          role(X_END, Y_AUTH + LW / 2 + 14, "per taxon", t)]
     s += [f'<rect x="{X_END - 8}" y="{MID - 8}" width="16" height="16" rx="8" fill="{t["st_fill"]}" '
           f'stroke="{t["attr"]}" stroke-width="2.4"/>',
           text(X_END, MID + above, "Comparison", t, weight=650),

@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install matplotlib numpy
+      - run: pip install matplotlib numpy pysam
       - uses: nf-core/setup-nextflow@v2
         with:
           version: '25.10.4'
@@ -53,3 +53,5 @@ jobs:
           awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) column[$i] = i; next } $column["included"] == "false" { print $1 }' \
             results/attribution/default/inputs/attribution_sample_qc.tsv | grep -qx bone
           test "$(tail -n +2 results/attribution/default/evaluation/evaluation.tsv | wc -l)" -eq 5
+          # The ancient calculus's Arachnia carries damage.
+          grep -q "^calculus.*Arachnia.*damaged$" results/authentication/authentication.tsv

@@ -62,6 +62,9 @@ def main():
     with open(REF_DIR / "chm13_tiny.fa", "w") as handle:
         handle.write(">chm13_tiny\n")
         handle.write(HOST + "\n")
+    # Authentication genomes without a Bowtie2 index, so the index is built.
+    with open(REF_DIR / "authentication.fa", "w") as handle:
+        handle.write(">stub|kraken:taxid|1301\n" + NONHOST_C + "\n")
     # Stub mode never reads the index, but the workflow checks it exists before it starts.
     for suffix in (".amb", ".ann", ".bwt", ".pac", ".sa"):
         (REF_DIR / f"chm13_tiny.fa{suffix}").write_text("mstflow stub index\n")
@@ -104,8 +107,8 @@ def main():
 
     write_metadata(TEST_DIR / "metadata.tsv")
 
-    # SourcePredict reads the NCBI taxonomy; SourceID-NMF's code is staged from a
-    # directory. Stub mode needs only the files to exist, and no network.
+    # SourcePredict and authentication read the NCBI taxonomy; SourceID-NMF's code is
+    # staged from a directory. Stub mode needs only the files to exist, and no network.
     taxonomy = TEST_DIR / "taxonomy"
     taxonomy.mkdir(parents=True, exist_ok=True)
     (taxonomy / "nodes.dmp").write_text("1\t|\t1\t|\tno rank\t|\n")

@@ -7,6 +7,7 @@ Everything is written under `--outdir` (default `results/`). Start with these.
 | `summary/sample_summary.tsv` | One row per sample: molecules after trimming and host removal, host fraction, classified fraction, taxa detected, and flags |
 | `tables/` | Abundance tables across all samples |
 | `attribution/<label>/` | With `--attribution_methods`: every method's estimates, calls and their agreement, and with `--attribution_cv` how often each method was right; see [source attribution](attribution.md#outputs) |
+| `authentication/authentication.tsv` | With `--authentication_genomes`: whether the leading taxa of each ancient library show ancient DNA damage; see [authentication](authentication.md#output) |
 | `qc/multiqc/multiqc_report.html` | Every QC metric in one report, including the sample summary |
 
 ## `summary/sample_summary.tsv`

@@ -1,7 +1,7 @@
 # Test data
 
 `-profile test` runs the whole workflow on short excerpts of 15 published sequencing
-libraries. The files, about 1.8 GB, are attached to the
+libraries. The files, about 1.9 GB, are attached to the
 [`test-data-v1` release](https://github.com/larryivan/mstflow/releases/tag/test-data-v1)
 and downloaded on the first run. This directory holds the recipe they were built from.
 
@@ -10,7 +10,7 @@ and downloaded on the first run. This directory holds the recipe they were built
 | [`libraries.tsv`](libraries.tsv) | The 15 libraries, with their ENA run and project accessions |
 | [`genomes.tsv`](genomes.tsv) | The 274 reference genomes in the Kraken2/Bracken database |
 | [`make_test_data.py`](make_test_data.py) | Downloads the reads, genomes, taxonomy and host genome |
-| [`build_test_db.sh`](build_test_db.sh) | Builds the database and collects the release files |
+| [`build_test_db.sh`](build_test_db.sh) | Builds the database, host index and authentication references, and collects the release files |
 
 ## Libraries
 
@@ -59,6 +59,9 @@ Genomes and their NCBI taxonomy were downloaded on 2026-10-21; the release carri
 with Kraken2 2.1.6 (k = 35) and Bracken read-length models for 50, 75, 100 and 150 bp.
 The host reference is the human mitochondrial genome (NC_012920.1), which is enough to
 exercise host removal without a 3 GB download.
+
+The authentication references are one genome, with its Bowtie2 index, for each of the
+17 genera that rank among the three most abundant in an ancient library.
 
 ## Rebuilding
 

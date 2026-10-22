@@ -15,11 +15,15 @@ First public release.
 - KrakenUniq as an alternative to Kraken2 (`--classifier krakenuniq`), with aMeta's
   unique k-mer and read thresholds. Bracken follows either classifier; with
   `--run_bracken false` the tables hold the classifier's own clade counts.
+- Authentication (`--authentication_genomes`): the most abundant taxa of each ancient
+  library are aligned to reference genomes with Bowtie2 and tested for ancient DNA
+  damage with PyDamage, with the breadth of genome they cover. See
+  docs/authentication.md.
 - `--kraken2_min_distinct_minimizers` removes taxa whose reads cover too few distinct
   minimizers, sample by sample, and lists what it removed.
 - `-profile test` runs every step, all attribution methods and their cross-validation
   included, on excerpts of 15 published ancient and modern libraries with a 274-genome
-  Kraken2/Bracken database, downloaded from a release asset (about 1.8 GB). The recipe
+  Kraken2/Bracken database, downloaded from a release asset (about 1.9 GB). The recipe
   is in `assets/test`.
 - `--kraken2_db` accepts a `.tar.gz` archive, local or a URL, such as the prebuilt
   indexes, and unpacks it. The samplesheet, reads, host genome and taxdump can also be

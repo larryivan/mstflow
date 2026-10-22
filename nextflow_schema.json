@@ -346,7 +346,7 @@
                     "type": "string",
                     "description": "NCBI taxdump: a directory with nodes.dmp (and names.dmp, for SourcePredict), or the nodes.dmp file itself, with the others beside it; local or a URL.",
                     "format": "path",
-                    "help_text": "Needed for `--taxon_filter prokaryote` and for SourcePredict. Use the snapshot the classifier database was built from."
+                    "help_text": "Needed for `--taxon_filter prokaryote`, SourcePredict and authentication. Use the snapshot the classifier database was built from."
                 },
                 "drop_taxids": {
                     "type": [
@@ -356,6 +356,33 @@
                     "description": "Comma-separated taxon IDs dropped from every table.",
                     "default": "0,1",
                     "pattern": "^[^'\\n\\r]*$"
+                }
+            }
+        },
+        "authentication_options": {
+            "title": "Authentication (optional)",
+            "type": "object",
+            "fa_icon": "fas fa-history",
+            "description": "Test whether the most abundant taxa of each ancient library carry ancient DNA damage, with Bowtie2 and PyDamage.",
+            "properties": {
+                "authentication_genomes": {
+                    "type": "string",
+                    "description": "Reference genomes of the taxa to authenticate: a FASTA, plain or gzipped, whose headers carry `kraken:taxid|<taxid>`; local or a URL.",
+                    "format": "path",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "help_text": "A Bowtie2 index beside it (`<fasta>.1.bt2` and the rest) is used when present, and built otherwise. Needs `--taxdump`. See docs/authentication.md."
+                },
+                "authentication_top_taxa": {
+                    "type": "integer",
+                    "description": "Authenticate this many of the most abundant taxa in each ancient library.",
+                    "default": 10,
+                    "minimum": 1
+                },
+                "authentication_min_reads": {
+                    "type": "integer",
+                    "description": "A taxon needs this many reads in the count table to be chosen, and this many aligned reads for its damage to be tested.",
+                    "default": 100,
+                    "minimum": 1
                 }
             }
         },
@@ -692,6 +719,16 @@
                     "type": "string",
                     "description": "Container image for KrakenUniq.",
                     "hidden": true
+                },
+                "container_bowtie2": {
+                    "type": "string",
+                    "description": "Container image for Bowtie2 and samtools.",
+                    "hidden": true
+                },
+                "container_pydamage": {
+                    "type": "string",
+                    "description": "Container image for PyDamage.",
+                    "hidden": true
                 }
             }
         },
@@ -737,6 +774,9 @@
         },
         {
             "$ref": "#/$defs/taxon_filter_options"
+        },
+        {
+            "$ref": "#/$defs/authentication_options"
         },
         {
             "$ref": "#/$defs/attribution_options"
