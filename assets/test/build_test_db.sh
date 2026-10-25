@@ -29,6 +29,6 @@ run "$BOWTIE2" bowtie2-build --threads 8 authentication.fna.gz authentication.fn
 rm -rf release && mkdir -p release
 tar -czf release/kraken2_db.tar.gz -C kraken2_db hash.k2d opts.k2d taxo.k2d
 cp samplesheet.tsv reads/*.fastq.gz host.fa host.fa.amb host.fa.ann host.fa.bwt host.fa.pac host.fa.sa release/
-cp taxonomy/nodes.dmp taxonomy/names.dmp taxonomy/merged.dmp release/
+cp taxonomy/nodes.dmp taxonomy/names.dmp release/
 cp authentication.fna.gz authentication.fna.gz.*.bt2 release/
 ls -l release
