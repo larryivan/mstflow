@@ -69,8 +69,8 @@ nextflow run larryivan/mstflow -profile docker \
     --host_fasta chm13v2.0.fa
 ```
 
-`--help` lists the options. Singularity and Apptainer work in place of Docker; Conda
-covers everything except FEAST, FastST and SourceID-NMF.
+`--help` lists the options. Singularity and Apptainer work in place of Docker, and
+`-profile conda` runs every step without containers, FEAST and FastST included.
 
 For source attribution, add `source_sink` and `model_source_env` columns and choose the
 methods with `--attribution_methods`; see [source attribution](docs/attribution.md).

@@ -533,6 +533,30 @@
                     "default": 0,
                     "minimum": 0
                 },
+                "r_methods_from_source": {
+                    "type": "boolean",
+                    "description": "Build FEAST and FastST's R packages from source instead of using the attribution image.",
+                    "default": false,
+                    "help_text": "Turned on by -profile conda, which has no image. The packages are built once when the run starts, from feast_code and npreg_code, and FastST's code is fetched from fastst_code. The environment needs R and a compiler."
+                },
+                "feast_code": {
+                    "type": "string",
+                    "description": "FEAST: the source archive that is built when r_methods_from_source is on, a URL or a file.",
+                    "default": "https://github.com/cozygene/FEAST/archive/2f8f3df8051e0e08341f597a9f4693bfb76b3bf6.tar.gz",
+                    "help_text": "FEAST is on GitHub only. The default is the commit that the attribution image is built from."
+                },
+                "fastst_code": {
+                    "type": "string",
+                    "description": "FastST: its funST.R, fetched when r_methods_from_source is on, a URL or a file.",
+                    "default": "https://raw.githubusercontent.com/joungmin-choi/FastST/f59141cee66a07301540da3313c932005f2221d3/Code/funST.R",
+                    "help_text": "The default is the commit that the attribution image is built from."
+                },
+                "npreg_code": {
+                    "type": "string",
+                    "description": "npreg, which FastST uses: the source archive that is built when r_methods_from_source is on, a URL or a file.",
+                    "default": "https://cran.r-project.org/src/contrib/Archive/npreg/npreg_1.1.0.tar.gz",
+                    "help_text": "npreg is not on conda-forge. The default is the version in the attribution image."
+                },
                 "sourceid_nmf_code": {
                     "type": "string",
                     "description": "SourceID-NMF: where its code is fetched from, a URL or a directory.",

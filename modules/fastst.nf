@@ -14,6 +14,8 @@ process FASTST {
     tuple val(meta), path(counts), path(mapping)
     path run_script
     path attribution_helpers   // mstflow_attribution.R, and .py for the stub
+    path fastst_code, stageAs: 'fastst/*'   // funST.R at --fastst_code; [] when the image has it
+    path r_library, stageAs: 'rlib'         // npreg built by R_METHODS_INSTALL; [] when the image has it
 
     output:
     tuple val(meta), path("${meta.analysis}.fastst.attribution.tsv"), emit: results
@@ -21,13 +23,15 @@ process FASTST {
 
     script:
     """
+    if [ -d rlib ]; then export R_LIBS="\$PWD/rlib\${R_LIBS:+:\$R_LIBS}"; fi
+    if [ -d fastst ]; then export FASTST_HOME="\$PWD/fastst"; fi
     Rscript ${run_script} \\
         --counts ${counts} \\
         --map ${mapping} \\
         --analysis ${meta.analysis} \\
         --output ${meta.analysis}.fastst.attribution.tsv
 
-    printf '"${task.process}":\\n    FastST: "%s"\\n' "\$(cat /usr/local/share/licenses/FastST/COMMIT)" \\
+    printf '"${task.process}":\\n    FastST: "%s"\\n' "\$(cat /usr/local/share/licenses/FastST/COMMIT 2>/dev/null || echo '${params.fastst_code}')" \\
         > ${meta.analysis}.fastst.versions.yml
     """
 

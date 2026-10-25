@@ -155,10 +155,11 @@ def checkParameters() {
     if ((methods || params.authentication_genomes) && !isOn(params.run_kraken2)) {
         error 'Source attribution and authentication need the count table, so classification must run (run_kraken2)'
     }
-    // FEAST and FastST come from GitHub and are only packaged in the attribution image.
-    def imageOnly = methods.intersect(['feast', 'fastst'])
-    if (imageOnly && !workflow.containerEngine && !workflow.stubRun) {
-        error "${imageOnly.join(' and ')} run only from MSTFlow's attribution container; use -profile docker, singularity or apptainer"
+    // FEAST and FastST come from GitHub: they are in the attribution image, or built from
+    // source when r_methods_from_source is on, as it is for -profile conda.
+    def fromGithub = methods.intersect(['feast', 'fastst'])
+    if (fromGithub && !workflow.containerEngine && !isOn(params.r_methods_from_source) && !workflow.stubRun) {
+        error "${fromGithub.join(' and ')} need MSTFlow's attribution container or a build from source; use -profile docker, singularity, apptainer or conda"
     }
     if (isOn(params.attribution_cv) && !methods) {
         error 'attribution_cv needs at least one method in attribution_methods'
