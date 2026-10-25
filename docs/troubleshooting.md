@@ -1,5 +1,14 @@
 # Troubleshooting
 
+**`-profile docker needs Docker, which is not installed` or `… not running`**
+**`No software environment was selected, and kraken2 and fastp are not installed`**
+MSTFlow found nothing to run its tools from. The message lists Docker, Apptainer,
+Singularity and Conda with what was found on this machine, and ends with the `-profile`
+to use. If none is installed, the easiest is [Miniforge](https://github.com/conda-forge/miniforge)
+with `-profile conda`. On a Mac or Windows, Docker must be started (open Docker Desktop)
+before the run. If the compute nodes of your cluster have the tool but the machine that
+starts the run does not, add `--check_software false`.
+
 **`Missing required parameter(s): input`**
 Give the samplesheet with `--input`. To try the workflow without your own data, run
 `nextflow run larryivan/mstflow -profile test,docker`.

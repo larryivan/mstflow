@@ -166,3 +166,89 @@ def hostBundleFor(reference) {
 def binScript(name) {
     return file("${projectDir}/bin/${name}", checkIfExists: true)
 }
+
+
+// Runs a shell command on the machine that starts the run and says whether it succeeded.
+// One that does not finish in ten seconds, such as a Docker daemon that hangs, counts as failed.
+def succeeds(command) {
+    def process = ['sh', '-c', command.toString()].execute()
+    if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        return false
+    }
+    return process.exitValue() == 0
+}
+
+
+def onPath(tool) {
+    return succeeds("command -v ${tool}")
+}
+
+
+// What this machine has of each way to get MSTFlow's tools, in the order they are suggested.
+def softwareFound() {
+    def docker = onPath('docker') ? (succeeds('docker info >/dev/null 2>&1') ? 'ready' : 'installed, not running') : 'not found'
+    return [
+        docker     : docker,
+        apptainer  : onPath('apptainer') ? 'ready' : 'not found',
+        singularity: onPath('singularity') ? 'ready' : 'not found',
+        conda      : (onPath('mamba') || onPath('conda')) ? 'ready' : 'not found'
+    ]
+}
+
+
+def softwareChoices(found) {
+    def labels = [docker: 'Docker', apptainer: 'Apptainer', singularity: 'Singularity', conda: 'Conda or Mamba']
+    def lines = labels.collect { name, label -> "  -profile ${name.padRight(12)} ${label.padRight(16)} ${found[name]}".toString() }
+    def first = labels.keySet().find { name -> found[name] == 'ready' }
+    lines << (first
+        ? "Run again with -profile ${first}."
+        : 'None of them is installed. The easiest to install is Miniforge (https://github.com/conda-forge/miniforge); then run with -profile conda.')
+    return lines.join('\n')
+}
+
+
+// Stops at the start, saying what to do, when the software the run needs is not there.
+// Without this a missing Docker shows up as "docker: command not found" in the first task,
+// and a run with nothing selected as the first tool not being found.
+def checkSoftware() {
+    if (workflow.stubRun || !isOn(params.check_software)) {
+        return
+    }
+    def engine = workflow.containerEngine ?: ('conda' in workflow.profile.tokenize(',') ? 'conda' : null)
+    def skip = 'To skip this check, add --check_software false.'
+
+    if (engine == null) {
+        // Nothing selected is fine when the tools are installed on the machine itself.
+        def missing = ['kraken2', 'fastp'].findAll { tool -> !onPath(tool) }
+        if (missing) {
+            error([
+                "No software environment was selected, and ${missing.join(' and ')} ${missing.size() == 1 ? 'is' : 'are'} not installed on this machine.",
+                'Choose how to get the tools with -profile:',
+                softwareChoices(softwareFound()),
+                skip
+            ].join('\n'))
+        }
+        return
+    }
+
+    def found = softwareFound()
+    if (found[engine] == 'ready') {
+        return
+    }
+    if (engine == 'apptainer' || engine == 'singularity') {
+        // Compute nodes often have these when the login node does not.
+        log.warn "-profile ${engine} was chosen but ${engine} was not found on this machine; the run goes on in case the compute nodes have it"
+        return
+    }
+    def need = engine == 'docker'
+        ? (found.docker == 'not found'
+            ? 'Docker, which is not installed on this machine'
+            : 'Docker, which is installed but not running (on a Mac or Windows, open Docker Desktop)')
+        : 'conda or mamba, which is not installed on this machine'
+    error([
+        "-profile ${engine} needs ${need}. Choose another:",
+        softwareChoices(found),
+        skip
+    ].join('\n'))
+}

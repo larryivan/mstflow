@@ -113,9 +113,12 @@ nextflow run larryivan/mstflow -r 0.1.0 -profile docker \
 ```
 
 - `-profile` chooses how the tools are installed: `docker`, `singularity`, `apptainer`
-  or `conda`.
-- `-profile conda` needs [Miniforge](https://github.com/conda-forge/miniforge) or another
-  conda that provides `mamba`. The first run builds one environment per group of tools,
+  or `conda`. Before anything is downloaded, MSTFlow checks that the one you chose is
+  installed, and says which of the four are on the machine if it is not. If your compute
+  nodes have it but the machine that starts the run does not, add `--check_software false`.
+  With no `-profile`, the run goes on only if the tools are installed on the machine itself.
+- `-profile conda` needs conda or mamba, for example from [Miniforge](https://github.com/conda-forge/miniforge);
+  it uses mamba when there is one. The first run builds one environment per group of tools,
   which takes several minutes; they are kept in `$NXF_CONDA_CACHEDIR` (by default the
   work directory) and reused. FEAST and FastST are not in Bioconda, so the run also
   compiles them from source: it needs internet access to GitHub and CRAN, or local copies

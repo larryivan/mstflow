@@ -44,6 +44,17 @@ With [Nextflow](https://www.nextflow.io/docs/latest/install.html) ≥ 25.10.4 an
 nextflow run larryivan/mstflow -profile test,docker
 ```
 
+`-profile` says how the tools are installed. If you are not sure which to use:
+
+| What your machine has | Use |
+|---|---|
+| Docker, running | `-profile docker` |
+| A cluster with Apptainer or Singularity | `-profile apptainer` or `-profile singularity` |
+| None of these | Install [Miniforge](https://github.com/conda-forge/miniforge), then `-profile conda` |
+
+MSTFlow checks this before it starts: if the one you chose is not installed, it lists what
+it found on your machine and the `-profile` to use instead.
+
 This runs every step, authentication and all five attribution methods with their
 cross-validation included, on excerpts of 18 published ancient and modern libraries
 and three sinks mixed from them in known shares.
