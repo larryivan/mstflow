@@ -68,8 +68,46 @@ class ContainerDirectiveTests(unittest.TestCase):
                     self.assertIn("@sha256:", image)
 
 
+def environment_dependencies(path):
+    dependencies, inside = [], False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("dependencies:"):
+            inside = True
+        elif inside and line.strip().startswith("- "):
+            dependencies.append(line.strip()[2:])
+    return dependencies
+
+
+class CondaEnvironmentTests(unittest.TestCase):
+    def test_every_environment_file_is_used(self):
+        config = (ROOT / "nextflow.config").read_text(encoding="utf-8")
+        self.assertEqual(
+            set(re.findall(r"envs/([\w.]+\.yml)", config)),
+            {path.name for path in (ROOT / "envs").glob("*.yml")},
+        )
+
+    def test_every_dependency_is_pinned(self):
+        for path in sorted((ROOT / "envs").glob("*.yml")):
+            for dependency in environment_dependencies(path):
+                with self.subTest(environment=path.name, dependency=dependency):
+                    self.assertRegex(dependency, r"^[\w.+-]+=[\w.*+-]+$")
+
+    def test_r_methods_share_one_environment(self):
+        config = (ROOT / "nextflow.config").read_text(encoding="utf-8")
+        self.assertRegex(
+            config,
+            r"withName: 'R_METHODS_INSTALL\|FEAST\|FASTST' \{\s*conda = \"\$\{projectDir\}/envs/attribution_r\.yml\"",
+        )
+
+
 @unittest.skipUnless(NEXTFLOW, "nextflow is required for profile tests")
 class ExecutionProfileTests(unittest.TestCase):
+    def test_only_conda_builds_the_r_methods_from_source(self):
+        for profile in ("conda", "docker", "apptainer", "singularity"):
+            with self.subTest(profile=profile):
+                values = flat_config(profile)
+                self.assertEqual(values["params.r_methods_from_source"], str(profile == "conda").lower())
+
     def test_profiles_enable_exactly_one_dependency_engine(self):
         engines = ("conda", "docker", "apptainer", "singularity")
         for profile in engines:

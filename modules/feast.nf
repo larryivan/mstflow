@@ -13,6 +13,7 @@ process FEAST {
     tuple val(meta), path(counts), path(mapping)
     path run_script
     path attribution_helpers   // mstflow_attribution.R, and .py for the stub
+    path r_library, stageAs: 'rlib'   // FEAST built by R_METHODS_INSTALL; [] when the image has it
 
     output:
     tuple val(meta), path("${meta.analysis}.feast.attribution.tsv"), emit: results
@@ -20,6 +21,7 @@ process FEAST {
 
     script:
     """
+    if [ -d rlib ]; then export R_LIBS="\$PWD/rlib\${R_LIBS:+:\$R_LIBS}"; fi
     Rscript ${run_script} \\
         --counts ${counts} \\
         --map ${mapping} \\
@@ -30,7 +32,7 @@ process FEAST {
         --output ${meta.analysis}.feast.attribution.tsv
 
     printf '"${task.process}":\\n    FEAST: "%s"\\n    R: "%s"\\n' \\
-        "\$(cat /usr/local/share/licenses/FEAST/COMMIT)" "\$(Rscript -e 'cat(R.version\$major, R.version\$minor, sep=".")')" \\
+        "\$(cat rlib/FEAST.commit /usr/local/share/licenses/FEAST/COMMIT 2>/dev/null | sed -n 1p)" "\$(Rscript -e 'cat(R.version\$major, R.version\$minor, sep=".")')" \\
         > ${meta.analysis}.feast.versions.yml
     """
 

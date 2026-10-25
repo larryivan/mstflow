@@ -3,6 +3,7 @@ include { SPLIT_ATTRIBUTION_FOLDS } from '../modules/split_attribution_folds'
 include { SOURCETRACKER2 } from '../modules/sourcetracker2'
 include { FEAST } from '../modules/feast'
 include { FASTST } from '../modules/fastst'
+include { R_METHODS_INSTALL } from '../modules/r_methods_install'
 include { SOURCEID_NMF } from '../modules/sourceid_nmf'
 include { PREPARE_SOURCEPREDICT_TAXONOMY; SOURCEPREDICT } from '../modules/sourcepredict'
 include { SUMMARIZE_ATTRIBUTION } from '../modules/summarize_attribution'
@@ -52,6 +53,17 @@ workflow ATTRIBUTION {
         analyses = main_analysis
     }
 
+    // The attribution image holds FEAST and FastST. Without it, their R packages are built
+    // from source, once, and handed to the tasks as a library.
+    if (isOn(params.r_methods_from_source) && ('feast' in methods || 'fastst' in methods)) {
+        R_METHODS_INSTALL(file(params.feast_code, checkIfExists: true), file(params.npreg_code, checkIfExists: true))
+        r_library = R_METHODS_INSTALL.out.library
+        fastst_code = channel.value(file(params.fastst_code, checkIfExists: true))
+    } else {
+        r_library = channel.value([])
+        fastst_code = channel.value([])
+    }
+
     results = channel.empty()
     if ('sourcetracker2' in methods) {
         SOURCETRACKER2(analyses, binScript('run_sourcetracker2_seeded.py'), binScript('sourcetracker2_results.py'),
@@ -59,11 +71,11 @@ workflow ATTRIBUTION {
         results = results.mix(SOURCETRACKER2.out.results)
     }
     if ('feast' in methods) {
-        FEAST(analyses, binScript('run_feast.R'), attributionHelpersR)
+        FEAST(analyses, binScript('run_feast.R'), attributionHelpersR, r_library)
         results = results.mix(FEAST.out.results)
     }
     if ('fastst' in methods) {
-        FASTST(analyses, binScript('run_fastst.R'), attributionHelpersR)
+        FASTST(analyses, binScript('run_fastst.R'), attributionHelpersR, fastst_code, r_library)
         results = results.mix(FASTST.out.results)
     }
     if ('sourceid_nmf' in methods) {
