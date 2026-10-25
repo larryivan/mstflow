@@ -114,6 +114,12 @@ nextflow run larryivan/mstflow -r 0.1.0 -profile docker \
 
 - `-profile` chooses how the tools are installed: `docker`, `singularity`, `apptainer`
   or `conda`.
+- `-profile conda` needs [Miniforge](https://github.com/conda-forge/miniforge) or another
+  conda that provides `mamba`. The first run builds one environment per group of tools,
+  which takes several minutes; they are kept in `$NXF_CONDA_CACHEDIR` (by default the
+  work directory) and reused. FEAST and FastST are not in Bioconda, so the run also
+  compiles them from source: it needs internet access to GitHub and CRAN, or local copies
+  given with `--feast_code`, `--fastst_code` and `--npreg_code`.
 - `-r 0.1.0` pins a release so the analysis can be rerun exactly.
 - `-resume` continues an interrupted run without redoing finished steps.
 - Many options are easier to keep in a file: `-params-file params.yml`. See

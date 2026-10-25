@@ -48,9 +48,15 @@ Its files are fetched from GitHub when the run starts. Without internet access, 
 <https://github.com/ZiyiHuang0708/SourceID-NMF> elsewhere, copy it over, and give the
 directory with `--sourceid_nmf_code`.
 
-**`feast and fastst run only from MSTFlow's attribution container`**
-FEAST and FastST are installed from GitHub into MSTFlow's attribution image, so they
-need `-profile docker`, `singularity` or `apptainer`; Conda cannot provide them.
+**`feast and fastst need MSTFlow's attribution container or a build from source`**
+FEAST and FastST are on GitHub, not in Bioconda. They run from MSTFlow's attribution
+image (`-profile docker`, `singularity` or `apptainer`), or, with `-profile conda`, from
+R packages that the workflow builds once at the start of the run. To build them with your
+own R and a C++ compiler instead, set `--r_methods_from_source true`.
+
+**FEAST or FastST cannot be built without internet access**
+The build fetches FEAST and FastST from GitHub and npreg from CRAN. Download the files
+beforehand and give their paths with `--feast_code`, `--fastst_code` and `--npreg_code`.
 
 **`cross-validation needs sources from at least two 'project' groups`**
 Cross-validation holds out one value of `--attribution_cv_group` at a time. Fill the

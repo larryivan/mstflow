@@ -50,7 +50,8 @@ belongs to; its numbers are probabilities, and the outputs mark them as such
 MSTFlow itself is MIT-licensed and does not include the methods' code.
 
 - **FEAST** may be used for non-commercial purposes only. It runs from MSTFlow's
-  attribution image, which carries its licence file.
+  attribution image, which carries its licence file; with `-profile conda` it is built
+  from source at the same commit (`--feast_code`).
 - **SourceID-NMF** has no licence in its repository, so MSTFlow does not redistribute
   it: each run downloads its five Python files from the authors' repository at a fixed
   commit (`--sourceid_nmf_code`). On machines without internet access, clone the

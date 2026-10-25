@@ -9,6 +9,11 @@ First public release.
   FastST (experimental), SourceID-NMF and SourcePredict (`--attribution_methods`). Their
   estimates, calls and agreement are written side by side, with one figure
   (`attribution/<label>/`). See docs/attribution.md.
+- `-profile conda` runs every step without containers, FEAST and FastST included. Their R
+  packages are built once at the start of the run from the commits in the attribution image
+  (`--feast_code`, `--fastst_code`, `--npreg_code`), in an environment whose R and OpenBLAS
+  are the image's; on the test data their estimates are identical to the image's. The test
+  profile runs under Conda in CI as well as under Docker.
 - Cross-validation of every method on the sources (`--attribution_cv`): the sources of
   one study at a time are held out as sinks of known origin, and each method's coverage
   and accuracy on them are reported.
