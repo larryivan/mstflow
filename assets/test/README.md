@@ -1,7 +1,7 @@
 # Test data
 
 `-profile test` runs the whole workflow on short excerpts of 18 published sequencing
-libraries, and on three sinks mixed from them in known shares. The files, about 1.9 GB, are attached to the
+libraries, and on three sinks mixed from them in known shares. The files, about 2.1 GB, are attached to the
 [`test-data-v1` release](https://github.com/larryivan/mstflow/releases/tag/test-data-v1)
 and downloaded on the first run. This directory holds the recipe they were built from.
 
@@ -85,8 +85,9 @@ the three libraries mixed into the mixtures, which were added later. The meadow 
 covered least: only about 3% of its reads are classified, into five genera.
 
 Genomes and their NCBI taxonomy were downloaded on 2026-10-21; the release carries
-`nodes.dmp`, `names.dmp` and an empty `merged.dmp` cut down to the database's taxa. The database is built
-with Kraken2 2.1.6 (k = 35).
+`nodes.dmp` and `names.dmp`, cut down to the database's taxa. The database is built
+with Kraken2 2.1.6 (k = 35). SourcePredict's taxonomy reader also wants a `merged.dmp`; the
+workflow writes an empty one when it is missing, since GitHub does not accept empty release files.
 The host reference is the human mitochondrial genome (NC_012920.1), which is enough to
 exercise host removal without a 3 GB download.
 
