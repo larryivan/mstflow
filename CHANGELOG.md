@@ -41,6 +41,11 @@ First public release.
 - A summary printed at the end of each run: where the results are and which samples
   were flagged.
 - Tasks killed for memory or time are retried once with twice the resources.
+- A check at the start that the software environment chosen with `-profile` is installed
+  (Docker running, Apptainer, Singularity, conda or mamba). If not, the run stops before
+  anything is downloaded, listing what the machine has and the `-profile` to use, instead
+  of failing in the first task; `--check_software false` skips it. The conda profile uses
+  conda when mamba is not installed.
 - MIT licence, `CITATION.cff`, CI, and documentation under `docs/`, with
   `docs/validation.md`: what the test data shows about the shares, the calls, and ancient
   sinks against modern sources, with figures.
