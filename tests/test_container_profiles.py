@@ -61,11 +61,9 @@ class ContainerDirectiveTests(unittest.TestCase):
         config = (ROOT / "nextflow.config").read_text(encoding="utf-8")
         images = dict(re.findall(r"^\s*(container_\w+) = '([^']+)'", config, re.MULTILINE))
         self.assertGreater(len(images), 10)
-        # The attribution image is pinned by digest once it is published.
         for parameter, image in images.items():
-            if parameter != "container_attribution":
-                with self.subTest(parameter=parameter):
-                    self.assertIn("@sha256:", image)
+            with self.subTest(parameter=parameter):
+                self.assertIn("@sha256:", image)
 
 
 @unittest.skipUnless(NEXTFLOW, "nextflow is required for profile tests")
