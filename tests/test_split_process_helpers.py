@@ -46,7 +46,7 @@ def run_script(script, *arguments, cwd):
 
 
 class SplitProcessHelperTests(unittest.TestCase):
-    def test_metadata_container_mode_leaves_paths_for_nextflow_staging(self):
+    def test_metadata_validation_leaves_paths_for_nextflow_staging(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata = root / "metadata.tsv"
@@ -67,7 +67,6 @@ class SplitProcessHelperTests(unittest.TestCase):
                 "--default-host-group",
                 "human",
                 "--require-explicit-host-for-nondefault",
-                "--skip-filesystem-checks",
                 cwd=root,
             )
             with output.open(encoding="utf-8", newline="") as handle:
@@ -125,7 +124,6 @@ class SplitProcessHelperTests(unittest.TestCase):
             )
             self.assertEqual(first_bytes, normalized.read_bytes())
             metrics = read_metrics(root / f"{sample}.adapterremoval.fragment_qc.tsv")
-            self.assertEqual(metrics["fastq_gzip_level"], "1")
             self.assertEqual(metrics["retained_collapsed_fragments"], "1")
             self.assertEqual(metrics["discarded_singleton_fragments"], "1")
             self.assertEqual(metrics["discarded_unmerged_fragments"], "1")
@@ -213,15 +211,13 @@ class SplitProcessHelperTests(unittest.TestCase):
     def test_kraken_preparation_filters_complete_modern_pairs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            r1 = root / "R1.fq.gz"
-            r2 = root / "R2.fq.gz"
+            r1 = root / "modern.prehost_R1.fq.gz"
+            r2 = root / "modern.prehost_R2.fq.gz"
             write_fastq(r1, [("keep/1", "A" * 40), ("short/1", "A" * 20)])
             write_fastq(r2, [("keep/2", "C" * 40), ("short/2", "C" * 20)])
             run_script(
                 "prepare_kraken_input.py",
                 "--sample-id",
-                "modern",
-                "--age-group",
                 "modern",
                 "--read",
                 r2,
@@ -237,7 +233,6 @@ class SplitProcessHelperTests(unittest.TestCase):
                 FRAGMENT_HELPER,
                 cwd=root,
             )
-            self.assertEqual((root / "modern.kraken_input.mode.txt").read_text(), "paired\n")
             self.assertEqual(
                 [record[0] for record in read_fastq(root / "modern.kraken_input_R1.fq.gz")],
                 ["@keep/1"],
@@ -263,8 +258,6 @@ class SplitProcessHelperTests(unittest.TestCase):
                 "prepare_kraken_input.py",
                 "--sample-id",
                 "ancient",
-                "--age-group",
-                "ancient",
                 "--read",
                 collapsed,
                 "--read",
@@ -281,7 +274,6 @@ class SplitProcessHelperTests(unittest.TestCase):
                 FRAGMENT_HELPER,
                 cwd=root,
             )
-            self.assertEqual((root / "ancient.kraken_input.mode.txt").read_text(), "paired\n")
             emitted_r1 = read_fastq(root / "ancient.kraken_input_R1.fq.gz")
             emitted_r2 = read_fastq(root / "ancient.kraken_input_R2.fq.gz")
             self.assertEqual(len(emitted_r1), 2)

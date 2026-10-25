@@ -1,0 +1,5 @@
+counting	sourcetracker2_correct	feast_correct	fastst_correct	sourcetracker2_mixture_error
+Bracken	0.8571	0.5714	0.2857	0.1160
+Kraken2, >= 10 reads per taxon	0.8571	0.5714	0.2857	0.1057
+Kraken2, >= 5 reads per taxon	0.8571	0.5714	0.5714	0.0542
+Kraken2, every read	0.8571	1	1	0.0648

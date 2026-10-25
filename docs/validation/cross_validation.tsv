@@ -1,0 +1,6 @@
+method	coverage	accuracy	correct_overall
+sourcetracker2	0.8571	1	0.8571
+feast	1	1	1
+fastst	1	1	1
+sourceid_nmf	0	NA	0
+sourcepredict	0	NA	0

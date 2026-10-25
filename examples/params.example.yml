@@ -1,67 +1,27 @@
-input: metadata.tsv
-outdir: results/project
+# A starting point for your own run. Copy it, edit the paths, then:
+#
+#   nextflow run larryivan/mstflow -profile docker -params-file params.yml
+#
+# Every other option and its default is in docs/parameters.md.
 
-remove_host: true
-host_fasta: /path/to/default_host.fa
-host_remove_max_forks: 4
-host_min_mapq: 0
-default_host_group: human
-require_explicit_host_for_nondefault: true
-require_explicit_host_action: false
+input: samplesheet.tsv
+outdir: results
 
-run_kraken2: true
-kraken2_db: /path/to/kraken2_db
-kraken2_extra_args: ""
-kraken2_max_forks: 1
-kraken2_cpus: 16
-kraken2_memory: "160 GB"
-kraken2_time: "36h"
-kraken2_kmer_len: 35
-kraken2_min_read_len: 35
-kraken2_confidence: 0.05
-kraken2_minimum_hit_groups: 2
-kraken2_use_names: true
-kraken2_report_minimizer_data: true
-kraken2_save_read_classifications: false
+kraken2_db: /path/to/k2_standard      # a prebuilt index, or any Kraken2 database
+kraken2_memory: 80 GB                  # at least the size of hash.k2d
 
-run_bracken: true
-bracken_db: /path/to/kraken2_db
-bracken_rank: G
-bracken_read_len: auto
-bracken_threshold: 10
-bracken_extra_args: ""
+host_fasta: /path/to/chm13v2.0.fa     # with its BWA index (.amb .ann .bwt .pac .sa) alongside
 
-taxon_filter: prokaryote
-taxdump: /path/to/taxdump
-drop_taxids: "0,1"
+# Keep only bacteria and archaea in the filtered tables (needs a matching NCBI taxdump):
+# taxon_filter: prokaryote
+# taxdump: /path/to/taxdump
 
-run_sourcetracker2: true
-sourcetracker2_source_rarefaction_depth: 1000
-sourcetracker2_sink_rarefaction_depth: 1000
-sourcetracker2_extra_args: ""
-sourcetracker2_aggregate_by: unit_id
-sourcetracker2_taxon_scope: filtered
-sourcetracker2_analysis_label: production
-sourcetracker2_include_panel_roles: ""
-sourcetracker2_exclude_panel_roles: "control,holdout"
-sourcetracker2_exclude_source_envs: ""
-sourcetracker2_exclude_source_classes: ""
-sourcetracker2_min_kraken_classified_fraction: 0.001
-sourcetracker2_min_taxon_filter_retained_reads: 1000
-sourcetracker2_min_taxon_filter_retained_fraction: 0.001
-sourcetracker2_max_unknown_prop: 0.5
-sourcetracker2_min_top_known_prop: 0.5
-sourcetracker2_min_top_known_margin: 0.05
-sourcetracker2_loo: false
-sourcetracker2_seed: 1
+# Attribute samples to source environments (needs source_sink and model_source_env
+# columns), and score each method on the sources, one study (project column) at a time:
+# attribution_methods: sourcetracker2,feast
+# attribution_cv: true
 
-min_length_modern: 50
-min_length_ancient: 35
-ancient_pe_mode: collapsed_only
-fragment_pair_gap: 100
-fastq_gzip_level: 6
-fastp_extra_args: ""
-adapterremoval_extra_args: ""
-
-multiqc_title: mstflow project
-publish_intermediates: false
+# KrakenUniq in place of Kraken2:
+# classifier: krakenuniq
+# krakenuniq_db: /path/to/krakenuniq_db
+# krakenuniq_preload_size: 32G

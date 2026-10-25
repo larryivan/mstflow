@@ -1,0 +1,18 @@
+# Overrides -profile test with the generated stub data (tests/stub/make_stub_data.py).
+input: tests/stub/data/metadata.tsv
+outdir: results/stub
+host_fasta: tests/stub/data/refs/chm13_tiny.fa
+kraken2_db: tests/stub/data/kraken2_stub_db
+taxdump: tests/stub/data/taxonomy
+authentication_genomes: tests/stub/data/refs/authentication.fa
+sourceid_nmf_code: tests/stub/data/sourceid_nmf
+taxon_filter: none
+require_explicit_host_action: true
+
+attribution_label: tiny_stub
+attribution_taxon_scope: all
+attribution_min_classified_fraction: 0
+attribution_min_retained_reads: 0
+attribution_min_retained_fraction: 0
+sourcetracker2_source_rarefaction_depth: 0
+sourcetracker2_sink_rarefaction_depth: 0

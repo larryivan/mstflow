@@ -43,13 +43,6 @@ class ReferenceInterfaceTests(unittest.TestCase):
     def test_validate_host_action_contract(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fq = root / "reads.fq.gz"
-            fq.touch()
-            host = root / "human.fa"
-            host.write_text(">chr1\nACGT\n")
-            for suffix in [".amb", ".ann", ".bwt", ".pac", ".sa"]:
-                (root / f"human.fa{suffix}").write_text("index\n")
-
             fields = [
                 "sample_id",
                 "fastq_1",
@@ -62,7 +55,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             ]
             base = {
                 "sample_id": "sample_1",
-                "fastq_1": str(fq),
+                "fastq_1": "reads.fq.gz",
                 "fastq_2": "NA",
                 "layout": "SE",
                 "age_group": "ancient",
@@ -80,13 +73,11 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 metadata,
                 "--output",
                 output,
-                "--default-host-fasta",
-                host,
                 "--require-explicit-host-action",
             )
             normalized = read_tsv(output)[0]
             self.assertEqual(normalized["host_action"], "skip")
-            self.assertEqual(normalized["host_group"], "none")
+            self.assertEqual(normalized["host_group"], "NA")
             self.assertEqual(normalized["host_ref"], "NA")
 
             missing_action = dict(base, host_action="NA")
@@ -114,7 +105,14 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 check=False,
             )
             self.assertNotEqual(conflicted.returncode, 0)
-            self.assertIn("host_action=skip requires host_ref=NA", conflicted.stderr)
+            self.assertIn("host_action=skip conflicts with host_ref=default", conflicted.stderr)
+
+            # Without a host_ref column, skip needs nothing else.
+            no_ref_fields = [f for f in fields if f != "host_ref"]
+            no_ref = {k: v for k, v in base.items() if k != "host_ref"}
+            write_tsv(metadata, no_ref_fields, [no_ref])
+            run_script("validate_metadata.py", "--input", metadata, "--output", output)
+            self.assertEqual(read_tsv(output)[0]["host_ref"], "NA")
 
             remove = dict(
                 base,
@@ -129,33 +127,13 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 metadata,
                 "--output",
                 output,
-                "--default-host-fasta",
-                host,
                 "--require-explicit-host-action",
             )
             self.assertEqual(read_tsv(output)[0]["host_action"], "remove")
 
-            (root / "human.fa.sa").unlink()
-            missing_index = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--default-host-fasta",
-                host,
-                check=False,
-            )
-            self.assertNotEqual(missing_index.returncode, 0)
-            self.assertIn("BWA index sidecar does not exist", missing_index.stderr)
-
-    def test_validate_preserves_panel_fields_and_guards_host_group(self):
+    def test_validate_keeps_extra_columns_and_guards_host_group(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fq = root / "reads.fq.gz"
-            host = root / "dog.fa"
-            fq.touch()
-            host.touch()
             metadata = root / "metadata.tsv"
             output = root / "validated.tsv"
             fields = [
@@ -164,34 +142,24 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 "fastq_2",
                 "layout",
                 "age_group",
-                "preprocess_mode",
                 "host_ref",
                 "host_group",
                 "source_sink",
                 "model_source_env",
-                "category",
                 "unit_id",
-                "panel_role",
-                "panel_layer",
-                "validation_group",
-                "project_group",
                 "custom_panel_note",
             ]
             row = {
                 "sample_id": "dog_1",
-                "fastq_1": str(fq),
+                "fastq_1": "reads.fq.gz",
                 "fastq_2": "NA",
                 "layout": "SE",
                 "age_group": "ancient",
                 "host_ref": "default",
                 "host_group": "Canid",
                 "source_sink": "source",
-                "category": "canid_paleofeces",
+                "model_source_env": "canid_paleofeces",
                 "unit_id": "dog_unit",
-                "panel_role": "source",
-                "panel_layer": "reference",
-                "validation_group": "VG1",
-                "project_group": "PG1",
                 "custom_panel_note": "keep me",
             }
             write_tsv(metadata, fields, [row])
@@ -208,7 +176,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn("requires an explicit host_ref", failed.stderr)
 
-            row["host_ref"] = str(host)
+            row["host_ref"] = "dog.fa"
             write_tsv(metadata, fields, [row])
             run_script(
                 "validate_metadata.py",
@@ -223,18 +191,18 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertEqual(validated["model_source_env"], "canid_paleofeces")
             self.assertEqual(validated["host_group"], "canid")
             self.assertEqual(validated["unit_id"], "dog_unit")
+            self.assertEqual(validated["preprocess_mode"], "adapterremoval_se")
 
             na_row = dict(row)
             na_row.update(
                 {
                     "sample_id": "human_na",
                     "age_group": "modern",
-                    "preprocess_mode": "NA",
                     "host_ref": "NA",
                     "host_group": "NA",
+                    "source_sink": "sink",
                     "model_source_env": "NA",
                     "unit_id": "NA",
-                    "category": "soil",
                 }
             )
             write_tsv(metadata, fields, [na_row])
@@ -249,14 +217,19 @@ class ReferenceInterfaceTests(unittest.TestCase):
             normalized = read_tsv(output)[0]
             self.assertEqual(normalized["preprocess_mode"], "fastp_se")
             self.assertEqual(normalized["host_group"], "human")
-            self.assertEqual(normalized["model_source_env"], "soil")
+            self.assertEqual(normalized["model_source_env"], "NA")
             self.assertEqual(normalized["unit_id"], "human_na")
+
+            na_row["source_sink"] = "source"
+            write_tsv(metadata, fields, [na_row])
+            no_env = run_script("validate_metadata.py", "--input", metadata, "--output", output, check=False)
+            self.assertNotEqual(no_env.returncode, 0)
+            self.assertIn("source rows require model_source_env", no_env.stderr)
 
     def test_validate_rejects_unsafe_ids_and_empty_manifests(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fq = root / "reads.fq.gz"
-            fq.touch()
+            fq = "reads.fq.gz"
             fields = ["sample_id", "fastq_1", "fastq_2", "layout", "age_group", "unit_id"]
             metadata = root / "metadata.tsv"
             output = root / "validated.tsv"
@@ -266,7 +239,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 [
                     {
                         "sample_id": "unsafe/name",
-                        "fastq_1": str(fq),
+                        "fastq_1": fq,
                         "fastq_2": "NA",
                         "layout": "SE",
                         "age_group": "modern",
@@ -304,7 +277,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 [
                     {
                         "sample_id": "NA",
-                        "fastq_1": str(fq),
+                        "fastq_1": fq,
                         "fastq_2": "NA",
                         "layout": "SE",
                         "age_group": "modern",
@@ -323,368 +296,161 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertNotEqual(missing_id.returncode, 0)
             self.assertIn("reserved missing-value token", missing_id.stderr)
 
-            bracken_fields = fields + ["bracken_read_len"]
-            write_tsv(
-                metadata,
-                bracken_fields,
-                [
-                    {
-                        "sample_id": "safe_id",
-                        "fastq_1": str(fq),
-                        "fastq_2": "NA",
-                        "layout": "SE",
-                        "age_group": "modern",
-                        "unit_id": "safe_unit",
-                        "bracken_read_len": '75"; touch injected; echo "',
-                    }
-                ],
-            )
-            unsafe_length = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                check=False,
-            )
-            self.assertNotEqual(unsafe_length.returncode, 0)
-            self.assertIn("bracken_read_len must be auto or a positive integer", unsafe_length.stderr)
-
     def test_build_requires_one_to_one_and_reports_kraken_qc(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata = root / "metadata.tsv"
-            fields = ["sample_id", "unit_id", "panel_role", "category"]
-            write_tsv(
-                metadata,
-                fields,
-                [
-                    {"sample_id": "s1", "unit_id": "u1", "panel_role": "source", "category": "soil"},
-                    {"sample_id": "s2", "unit_id": "u2", "panel_role": "sink", "category": "bone"},
-                ],
-            )
-            bracken_header = [
-                "name",
-                "taxonomy_id",
-                "taxonomy_lvl",
-                "kraken_assigned_reads",
-                "added_reads",
-                "new_est_reads",
-                "fraction_total_reads",
-            ]
-            bracken = []
+            write_tsv(metadata, ["sample_id"], [{"sample_id": "s1"}, {"sample_id": "s2"}])
             reports = []
-            for sample, count in (("s1", 800), ("s2", 400)):
-                table = root / f"{sample}.bracken.tsv"
-                write_tsv(
-                    table,
-                    bracken_header,
-                    [
-                        {
-                            "name": "Bacteria",
-                            "taxonomy_id": "2",
-                            "taxonomy_lvl": "D",
-                            "kraken_assigned_reads": count,
-                            "added_reads": 0,
-                            "new_est_reads": count,
-                            "fraction_total_reads": 1,
-                        }
-                    ],
-                )
-                bracken.append(table)
+            for sample in ("s1", "s2"):
                 report = root / f"{sample}.kraken2.report.txt"
                 report.write_text(
                     "20.00\t200\t200\tU\t0\tunclassified\n"
                     "80.00\t800\t0\tR\t1\troot\n"
+                    "60.00\t600\t600\tG\t1301\t  Streptococcus\n"
                 )
                 reports.append(report)
 
-            run_script(
-                "build_feature_table.py",
-                "--metadata",
-                metadata,
-                "--prefix",
-                "bracken_G",
-                "--taxon-filter",
-                "none",
-                *bracken,
-                "--kraken-reports",
-                *reports,
-                cwd=root,
-            )
-            qc = {row["sample_id"]: row for row in read_tsv(root / "bracken_G_none_sample_qc.tsv")}
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", *reports, cwd=root)
+            qc = {row["sample_id"]: row for row in read_tsv(root / "kraken2_G_none_sample_qc.tsv")}
             self.assertEqual(qc["s1"]["kraken_classified_fraction"], "0.8")
-            self.assertEqual(qc["s1"]["bracken_total_reads"], "800")
-            self.assertEqual(qc["s1"]["unit_id"], "u1")
+            self.assertEqual(qc["s1"]["rank_total_reads"], "600")
+            self.assertEqual(qc["s1"]["rank_fraction_of_classified"], "0.75")
 
-            incomplete = run_script(
-                "build_feature_table.py",
-                "--metadata",
-                metadata,
-                "--prefix",
-                "bad",
-                bracken[0],
-                cwd=root,
-                check=False,
-            )
+            incomplete = run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "bad",
+                                    reports[0], cwd=root, check=False)
             self.assertNotEqual(incomplete.returncode, 0)
-            self.assertIn("missing Bracken table for: s2", incomplete.stderr)
+            self.assertIn("missing Kraken report for: s2", incomplete.stderr)
 
-    def test_build_preserves_header_only_bracken_sample_as_zero(self):
+    def test_build_keeps_samples_without_counts_as_zero(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata = root / "metadata.tsv"
-            metadata_fields = ["sample_id", "unit_id", "panel_role", "category"]
             write_tsv(
                 metadata,
-                metadata_fields,
-                [
-                    {
-                        "sample_id": "blank1",
-                        "unit_id": "blank_unit",
-                        "panel_role": "control",
-                        "category": "extraction_library_blank",
-                    },
-                    {
-                        "sample_id": "blank2",
-                        "unit_id": "blank_unit_2",
-                        "panel_role": "control",
-                        "category": "extraction_library_blank",
-                    },
-                    {
-                        "sample_id": "source1",
-                        "unit_id": "source_unit",
-                        "panel_role": "source",
-                        "category": "soil",
-                    },
-                ],
+                ["sample_id"],
+                [{"sample_id": "blank1"}, {"sample_id": "blank2"}, {"sample_id": "source1"}],
             )
-            bracken_header = [
-                "name",
-                "taxonomy_id",
-                "taxonomy_lvl",
-                "kraken_assigned_reads",
-                "added_reads",
-                "new_est_reads",
-                "fraction_total_reads",
-            ]
-            bracken_files = []
-            for sample in ("blank1", "blank2"):
-                table = root / f"{sample}.bracken.tsv"
-                write_tsv(table, bracken_header, [])
-                bracken_files.append(table)
-            source_table = root / "source1.bracken.tsv"
-            write_tsv(
-                source_table,
-                bracken_header,
-                [
-                    {
-                        "name": "Bacteria",
-                        "taxonomy_id": "2",
-                        "taxonomy_lvl": "D",
-                        "kraken_assigned_reads": 8,
-                        "added_reads": 0,
-                        "new_est_reads": 8,
-                        "fraction_total_reads": 1,
-                    }
-                ],
-            )
-            bracken_files.append(source_table)
-
-            blank1_report = root / "blank1.kraken2.report.txt"
-            blank1_report.write_text(
+            # blank1 has classified reads but none at the genus; blank2 has none at all.
+            (root / "blank1.kraken2.report.txt").write_text(
                 "71.11\t64\t64\tU\t0\tunclassified\n"
                 "28.89\t26\t0\tR\t1\troot\n"
-                "7.78\t7\t7\tG\t101\t  Genus_one\n"
-                "4.44\t4\t4\tG\t102\t  Genus_two\n"
-                "2.22\t2\t2\tG\t103\t  Genus_three\n"
-                "2.22\t2\t2\tG\t104\t  Genus_four\n"
-                "2.22\t2\t2\tG\t105\t  Genus_five\n"
+                "28.89\t26\t26\tF\t1300\t  Streptococcaceae\n"
             )
-            blank2_report = root / "blank2.kraken2.report.txt"
-            blank2_report.write_text("100.00\t12\t12\tU\t0\tunclassified\n")
-            source_report = root / "source1.kraken2.report.txt"
-            source_report.write_text(
+            (root / "blank2.kraken2.report.txt").write_text("100.00\t12\t12\tU\t0\tunclassified\n")
+            (root / "source1.kraken2.report.txt").write_text(
                 "20.00\t2\t2\tU\t0\tunclassified\n"
                 "80.00\t8\t0\tR\t1\troot\n"
+                "80.00\t8\t8\tG\t1301\t  Streptococcus\n"
             )
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", "blank1.kraken2.report.txt", "blank2.kraken2.report.txt",
+                       "source1.kraken2.report.txt", cwd=root)
 
-            run_script(
-                "build_feature_table.py",
-                "--metadata",
-                metadata,
-                "--prefix",
-                "bracken_G",
-                "--taxon-filter",
-                "none",
-                *bracken_files,
-                "--kraken-reports",
-                blank1_report,
-                blank2_report,
-                source_report,
-                cwd=root,
-            )
-
-            with open(root / "bracken_G_counts.tsv", newline="") as handle:
+            with open(root / "kraken2_G_counts.tsv", newline="") as handle:
                 self.assertEqual(
                     list(csv.reader(handle, delimiter="\t")),
                     [
                         ["#OTU ID", "blank1", "blank2", "source1"],
-                        ["taxid_2__Bacteria", "0", "0", "8"],
+                        ["taxid_1301__Streptococcus", "0", "0", "8"],
                     ],
                 )
-            qc = {
-                row["sample_id"]: row
-                for row in read_tsv(root / "bracken_G_none_sample_qc.tsv")
-            }
+            qc = {row["sample_id"]: row for row in read_tsv(root / "kraken2_G_none_sample_qc.tsv")}
             self.assertEqual(qc["blank1"]["kraken_total_reads"], "90")
             self.assertEqual(qc["blank1"]["kraken_classified_reads"], "26")
             self.assertEqual(qc["blank1"]["kraken_unclassified_reads"], "64")
             self.assertEqual(qc["blank1"]["kraken_classified_fraction"], "0.288888888889")
-            self.assertEqual(qc["blank1"]["bracken_total_reads"], "0")
-            self.assertEqual(qc["blank1"]["bracken_fraction_of_kraken_classified"], "0")
+            self.assertEqual(qc["blank1"]["rank_total_reads"], "0")
+            self.assertEqual(qc["blank1"]["rank_fraction_of_classified"], "0")
             self.assertEqual(qc["blank1"]["taxon_filter_retained_reads"], "0")
             self.assertEqual(qc["blank1"]["taxon_filter_retained_fraction"], "NA")
             self.assertEqual(qc["blank1"]["raw_nonzero_features"], "0")
-            self.assertEqual(qc["blank1"]["filtered_nonzero_features"], "0")
             self.assertEqual(qc["blank2"]["kraken_total_reads"], "12")
-            self.assertEqual(qc["blank2"]["kraken_classified_reads"], "0")
             self.assertEqual(qc["blank2"]["kraken_classified_fraction"], "0")
-            self.assertEqual(qc["blank2"]["bracken_fraction_of_kraken_classified"], "NA")
-            self.assertEqual(qc["source1"]["bracken_total_reads"], "8")
+            self.assertEqual(qc["blank2"]["rank_fraction_of_classified"], "NA")
+            self.assertEqual(qc["source1"]["rank_total_reads"], "8")
             self.assertEqual(qc["source1"]["raw_nonzero_features"], "1")
 
-    def _integer_count_fixture(self, root, new_est_reads):
+    def _integer_count_fixture(self, root, genus_reads):
         metadata = root / "metadata.tsv"
         write_tsv(metadata, ["sample_id"], [{"sample_id": "one"}, {"sample_id": "two"}])
-        bracken_header = [
-            "name",
-            "taxonomy_id",
-            "taxonomy_lvl",
-            "kraken_assigned_reads",
-            "added_reads",
-            "new_est_reads",
-            "fraction_total_reads",
-        ]
-        tables = []
-        for index, sample in enumerate(("one", "two")):
-            table = root / f"{sample}.bracken.tsv"
-            write_tsv(
-                table,
-                bracken_header,
-                [
-                    {
-                        "name": "Bacteria",
-                        "taxonomy_id": "2",
-                        "taxonomy_lvl": "D",
-                        "kraken_assigned_reads": 5,
-                        "added_reads": 0,
-                        "new_est_reads": new_est_reads[index],
-                        "fraction_total_reads": 1,
-                    }
-                ],
+        reports = []
+        for sample, reads in zip(("one", "two"), genus_reads):
+            report = root / f"{sample}.kraken2.report.txt"
+            report.write_text(
+                "0.00\t0\t0\tU\t0\tunclassified\n"
+                "100.00\t10\t0\tR\t1\troot\n"
+                f"100.00\t{reads}\t0\tG\t1301\t  Streptococcus\n"
             )
-            tables.append(table)
-        return metadata, tables
+            reports.append(report)
+        return metadata, reports
 
-    def test_bracken_counts_are_exact_integers_and_reject_fractions(self):
+    def test_counts_are_exact_integers_and_reject_fractions(self):
         """Counts must survive as exact integers, and fractions must fail loudly."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             # 8, 8.0 and 8e0 are all the integer 8; a huge count must not become
             # exponent notation, which %.12g would have produced.
-            metadata, tables = self._integer_count_fixture(root, ["8.0", "9007199254740993"])
-            run_script(
-                "build_feature_table.py",
-                "--metadata", metadata,
-                "--prefix", "bracken_G",
-                "--taxon-filter", "none",
-                *tables,
-                cwd=root,
-            )
-            with open(root / "bracken_G_counts.tsv", newline="") as handle:
+            metadata, reports = self._integer_count_fixture(root, ["8.0", "9007199254740993"])
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", *reports, cwd=root)
+            with open(root / "kraken2_G_counts.tsv", newline="") as handle:
                 self.assertEqual(
                     list(csv.reader(handle, delimiter="\t")),
                     [
                         ["#OTU ID", "one", "two"],
-                        ["taxid_2__Bacteria", "8", "9007199254740993"],
+                        ["taxid_1301__Streptococcus", "8", "9007199254740993"],
                     ],
                 )
 
-            metadata, tables = self._integer_count_fixture(root, ["8e0", "3"])
-            run_script(
-                "build_feature_table.py",
-                "--metadata", metadata,
-                "--prefix", "bracken_G",
-                "--taxon-filter", "none",
-                *tables,
-                cwd=root,
-            )
-            counts = read_tsv(root / "bracken_G_counts.tsv")[0]
-            self.assertEqual(counts["one"], "8")
-
+            metadata, reports = self._integer_count_fixture(root, ["8e0", "3"])
+            run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                       "--taxon-filter", "none", *reports, cwd=root)
+            self.assertEqual(read_tsv(root / "kraken2_G_counts.tsv")[0]["one"], "8")
             # Relative abundance stays floating point.
-            relative = read_tsv(root / "bracken_G_relative_abundance.tsv")[0]
-            self.assertEqual(relative["one"], "1")
+            self.assertEqual(read_tsv(root / "kraken2_G_relative_abundance.tsv")[0]["one"], "1")
 
             # "1e999999999" is finite to Decimal but would expand to a
             # billion-digit integer inside a non-interruptible C call. It must
             # be rejected, not materialised.
-            for bad in ("", "8.5", "-1", "nan", "inf", "eight", "1e999999999"):
-                metadata, tables = self._integer_count_fixture(root, [bad, "3"])
-                failed = run_script(
-                    "build_feature_table.py",
-                    "--metadata", metadata,
-                    "--prefix", "bad",
-                    "--taxon-filter", "none",
-                    *tables,
-                    cwd=root,
-                    check=False,
-                )
+            for bad in ("8.5", "-1", "nan", "inf", "eight", "1e999999999"):
+                metadata, reports = self._integer_count_fixture(root, [bad, "3"])
+                failed = run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "bad",
+                                    "--taxon-filter", "none", *reports, cwd=root, check=False)
                 self.assertNotEqual(failed.returncode, 0, bad)
-                # Failures identify the file, the line, the field and the sample.
-                self.assertIn("one.bracken.tsv:2:new_est_reads", failed.stderr, bad)
-                self.assertIn("sample one", failed.stderr, bad)
+                # Failures identify the file, the line and the field.
+                self.assertIn("one.kraken2.report.txt:3:clade_reads", failed.stderr, bad)
 
-    def test_feature_table_is_invariant_to_bracken_file_order(self):
+    def test_feature_table_is_invariant_to_report_order(self):
         """Terminal collect() order must not change any published table."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            metadata, tables = self._integer_count_fixture(root, ["8", "3"])
+            metadata, reports = self._integer_count_fixture(root, ["8", "3"])
             outputs = [
-                "bracken_G_counts.tsv",
-                "bracken_G_relative_abundance.tsv",
-                "bracken_G_features.tsv",
-                "bracken_G_none_counts.tsv",
-                "bracken_G_none_sample_qc.tsv",
+                "kraken2_G_counts.tsv",
+                "kraken2_G_relative_abundance.tsv",
+                "kraken2_G_features.tsv",
+                "kraken2_G_none_counts.tsv",
+                "kraken2_G_none_sample_qc.tsv",
             ]
             digests = []
-            for order in (tables, list(reversed(tables))):
-                run_script(
-                    "build_feature_table.py",
-                    "--metadata", metadata,
-                    "--prefix", "bracken_G",
-                    "--taxon-filter", "none",
-                    *order,
-                    cwd=root,
-                )
+            for order in (reports, list(reversed(reports))):
+                run_script("build_feature_table.py", "--metadata", metadata, "--prefix", "kraken2_G",
+                           "--taxon-filter", "none", *order, cwd=root)
                 digests.append({name: (root / name).read_bytes() for name in outputs})
             self.assertEqual(digests[0], digests[1])
-            self.assertEqual(read_tsv(root / "bracken_G_counts.tsv")[0]["one"], "8")
+            self.assertEqual(read_tsv(root / "kraken2_G_counts.tsv")[0]["one"], "8")
 
     def _source_tracker_fixture(self, root):
         metadata = root / "metadata.tsv"
+        # The last five columns are reserved by the map; their values must not leak into it.
         fields = [
             "sample_id",
             "unit_id",
             "source_sink",
             "model_source_env",
-            "source_class",
-            "panel_role",
-            "panel_layer",
-            "category",
-            "validation_group",
-            "project_group",
+            "project",
             "host_action",
             "host_group",
             "SourceSink",
@@ -694,12 +460,12 @@ class ReferenceInterfaceTests(unittest.TestCase):
             "#SampleID",
         ]
         rows = [
-            ["bone1", "bone_unit", "source", "bone", "bone", "source", "reference", "bone", "VG", "PG", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["bone2", "bone_unit", "source", "bone", "bone", "source", "reference", "bone", "VG", "PG", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["soil1", "soil_unit", "source", "soil", "soil", "source", "reference", "soil", "VG", "PG", "skip", "none", "bad", "bad", "bad", "bad", "bad"],
-            ["soil2", "soil_unit", "source", "soil", "soil", "source", "reference", "soil", "VG", "PG", "skip", "none", "bad", "bad", "bad", "bad", "bad"],
-            ["sink1", "sink_unit", "sink", "bone", "bone", "sink", "target", "bone", "VG", "PG", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["blank1", "blank_unit", "source", "blank", "blank", "control", "qc", "blank", "VG", "PG", "skip", "none", "bad", "bad", "bad", "bad", "bad"],
+            ["bone1", "bone_unit", "source", "bone", "P1", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
+            ["bone2", "bone_unit", "source", "bone", "P1", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
+            ["soil1", "soil_unit", "source", "soil", "P2", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
+            ["soil2", "soil_unit", "source", "soil", "P2", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
+            ["sink1", "sink_unit", "sink", "NA", "P3", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
+            ["blank1", "blank_unit", "", "blank", "P3", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
         ]
         write_tsv(metadata, fields, [dict(zip(fields, row)) for row in rows])
         counts = root / "counts.tsv"
@@ -713,7 +479,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             "kraken_total_reads",
             "kraken_classified_reads",
             "kraken_classified_fraction",
-            "bracken_total_reads",
+            "rank_total_reads",
             "taxon_filter_retained_reads",
             "taxon_filter_retained_fraction",
         ]
@@ -726,7 +492,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     "kraken_total_reads": 10000,
                     "kraken_classified_reads": 2000,
                     "kraken_classified_fraction": 0.2,
-                    "bracken_total_reads": 2500,
+                    "rank_total_reads": 2500,
                     "taxon_filter_retained_reads": 1200 if row[0].startswith("bone") else 1500,
                     "taxon_filter_retained_fraction": 0.8,
                 }
@@ -735,54 +501,43 @@ class ReferenceInterfaceTests(unittest.TestCase):
         )
         return metadata, counts, feature_qc
 
-    def test_prepare_aggregates_units_and_reproduces_missing_source_experiment(self):
+    def _prepare(self, root, metadata, counts, feature_qc, name, *extra, check=True):
+        return run_script(
+            "prepare_attribution_inputs.py",
+            "--counts", counts,
+            "--metadata", metadata,
+            "--feature-sample-qc", feature_qc,
+            "--output-counts", root / f"{name}_counts.tsv",
+            "--output-map", root / f"{name}_map.tsv",
+            "--summary", root / f"{name}_summary.tsv",
+            "--sample-qc", root / f"{name}_qc.tsv",
+            "--aggregate-by", "unit_id",
+            *extra,
+            check=check,
+        )
+
+    def test_prepare_aggregates_units_and_leaves_out_unselected_rows(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "st_counts.tsv",
-                "--output-map",
-                root / "st_map.tsv",
-                "--summary",
-                root / "summary.tsv",
-                "--exclusions",
-                root / "excluded.tsv",
-                "--sample-qc",
-                root / "st_qc.tsv",
-                "--aggregate-by",
-                "unit_id",
-                "--exclude-source-env",
-                "bone",
-                "--exclude-panel-role",
-                "control,holdout",
-                "--source-rarefaction-depth",
-                "1000",
-                "--sink-rarefaction-depth",
-                "1000",
-                "--analysis-label",
-                "NO_BONE",
-            )
+            rows = read_tsv(metadata)
+            for row in rows:
+                if row["sample_id"].startswith("bone"):
+                    row["source_sink"] = "NA"
+            write_tsv(metadata, list(rows[0]), rows)
+            self._prepare(root, metadata, counts, feature_qc, "st",
+                          "--min-source-count", "1000", "--min-sink-count", "1000")
             mapping = {row["#SampleID"]: row for row in read_tsv(root / "st_map.tsv")}
             self.assertEqual(set(mapping), {"soil_unit", "sink_unit"})
             self.assertEqual(mapping["soil_unit"]["aggregation_n"], "2")
-            self.assertEqual(mapping["soil_unit"]["validation_group"], "VG")
+            self.assertEqual(mapping["soil_unit"]["Env"], "soil")
+            self.assertEqual(mapping["soil_unit"]["project"], "P2")
             self.assertEqual(mapping["soil_unit"]["host_action"], "skip")
-            self.assertEqual(mapping["soil_unit"]["host_group"], "none")
             qc = {row["input_sample_id"]: row for row in read_tsv(root / "st_qc.tsv")}
-            self.assertEqual(qc["soil1"]["host_action"], "skip")
-            self.assertEqual(qc["soil1"]["host_group"], "none")
-            excluded = read_tsv(root / "excluded.tsv")
-            reasons = {row["input_sample_id"]: row["exclusion_reason"] for row in excluded}
-            self.assertTrue(reasons["bone1"].startswith("source_environment_excluded"))
-            self.assertTrue(reasons["blank1"].startswith("panel_role_excluded"))
+            self.assertEqual(qc["soil1"]["analysis_sample_id"], "soil_unit")
+            self.assertEqual(qc["soil1"]["included"], "true")
+            self.assertEqual(qc["bone1"]["exclusion_reason"], "source_sink_not_selected")
+            self.assertEqual(qc["blank1"]["exclusion_reason"], "source_sink_not_selected")
             with open(root / "st_counts.tsv", newline="") as handle:
                 header = next(csv.reader(handle, delimiter="\t"))
             self.assertEqual(header, ["#OTU ID", "soil_unit", "sink_unit"])
@@ -792,12 +547,12 @@ class ReferenceInterfaceTests(unittest.TestCase):
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)
 
-            # A preserved zero-estimate Bracken sample has no defined retained
+            # A sample with no counts at the rank has no defined retained
             # fraction. That must be reported as NA, not as an empty cell.
             qc_rows = read_tsv(feature_qc)
             for row in qc_rows:
                 if row["sample_id"] == "sink1":
-                    row["bracken_total_reads"] = "0"
+                    row["rank_total_reads"] = "0"
                     row["taxon_filter_retained_reads"] = "0"
                     row["taxon_filter_retained_fraction"] = "NA"
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
@@ -806,26 +561,14 @@ class ReferenceInterfaceTests(unittest.TestCase):
             metadata_rows = read_tsv(metadata)
             for row in metadata_rows:
                 if row["sample_id"] == "blank1":
-                    row["panel_role"] = "target"
                     row["source_sink"] = "sink"
             write_tsv(metadata, list(metadata_rows[0]), metadata_rows)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts", counts,
-                "--metadata", metadata,
-                "--feature-sample-qc", feature_qc,
-                "--output-counts", root / "st_counts.tsv",
-                "--output-map", root / "st_map.tsv",
-                "--summary", root / "summary.tsv",
-                "--sample-qc", root / "st_qc.tsv",
-                "--aggregate-by", "unit_id",
-                "--exclude-panel-role", "control,holdout",
-                "--min-taxon-filter-retained-reads", "0",
-                "--min-taxon-filter-retained-fraction", "0",
-            )
+            self._prepare(root, metadata, counts, feature_qc, "st",
+                          "--min-taxon-filter-retained-reads", "0",
+                          "--min-taxon-filter-retained-fraction", "0")
             qc = {row["input_sample_id"]: row for row in read_tsv(root / "st_qc.tsv")}
             self.assertEqual(qc["sink1"]["taxon_filter_retained_fraction"], "NA")
-            self.assertEqual(qc["sink1"]["bracken_total_reads"], "0")
+            self.assertEqual(qc["sink1"]["rank_total_reads"], "0")
             # Counts stay exact integers, never 1500.0 or 1.5e+03.
             self.assertEqual(qc["soil1"]["taxon_filter_retained_reads"], "3000")
             self.assertEqual(qc["soil1"]["input_total_count"], "700")
@@ -837,110 +580,12 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     ["#OTU ID", "bone1", "bone2", "soil1", "soil2", "sink1", "blank1"]
                 )
                 writer.writerow(["taxid_2__Bacteria", 600, 600, "700.5", 800, 1500, 2000])
-            failed = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts", fractional,
-                "--metadata", metadata,
-                "--feature-sample-qc", feature_qc,
-                "--output-counts", root / "bad_counts.tsv",
-                "--output-map", root / "bad_map.tsv",
-                "--summary", root / "bad_summary.tsv",
-                "--aggregate-by", "unit_id",
-                check=False,
-            )
+            failed = self._prepare(root, metadata, fractional, feature_qc, "bad", check=False)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn("fractional_counts.tsv:2", failed.stderr)
             self.assertIn("taxid_2__Bacteria", failed.stderr)
             self.assertIn("soil1", failed.stderr)
             self.assertIn("whole read count", failed.stderr)
-
-    def test_prepare_loo_does_not_require_sink(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "loo_counts.tsv",
-                "--output-map",
-                root / "loo_map.tsv",
-                "--summary",
-                root / "loo_summary.tsv",
-                "--exclusions",
-                root / "loo_excluded.tsv",
-                "--sample-qc",
-                root / "loo_qc.tsv",
-                "--aggregate-by",
-                "sample_id",
-                "--exclude-panel-role",
-                "control,holdout",
-                "--sink-rarefaction-depth",
-                "500",
-                "--random-seed",
-                "17",
-                "--loo",
-            )
-            mapping = read_tsv(root / "loo_map.tsv")
-            self.assertTrue(mapping)
-            self.assertEqual({row["SourceSink"] for row in mapping}, {"source"})
-            with open(root / "loo_counts.tsv", newline="") as handle:
-                count_rows = list(csv.reader(handle, delimiter="\t"))
-            column_totals = [
-                sum(float(row[index]) for row in count_rows[1:])
-                for index in range(1, len(count_rows[0]))
-            ]
-            self.assertEqual(column_totals, [500.0] * len(column_totals))
-            excluded = {row["input_sample_id"]: row for row in read_tsv(root / "loo_excluded.tsv")}
-            self.assertEqual(excluded["sink1"]["exclusion_reason"], "loo_sources_only")
-
-    def test_prepare_loo_rejects_rarefied_sources_and_singleton_environments(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            common = [
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "loo_counts.tsv",
-                "--output-map",
-                root / "loo_map.tsv",
-                "--summary",
-                root / "loo_summary.tsv",
-                "--exclude-panel-role",
-                "control,holdout",
-                "--loo",
-            ]
-            rarefied = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                *common,
-                "--source-rarefaction-depth",
-                "1000",
-                check=False,
-            )
-            self.assertNotEqual(rarefied.returncode, 0)
-            self.assertIn("LOO requires --source-rarefaction-depth 0", rarefied.stderr)
-
-            singleton = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                *common,
-                "--aggregate-by",
-                "unit_id",
-                check=False,
-            )
-            self.assertNotEqual(singleton.returncode, 0)
-            self.assertIn("at least two independent analysis units", singleton.stderr)
-            self.assertIn("bone", singleton.stderr)
-            self.assertIn("soil", singleton.stderr)
 
     def test_prepare_validates_and_filters_complete_units(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -949,36 +594,17 @@ class ReferenceInterfaceTests(unittest.TestCase):
             rows = read_tsv(metadata)
             for row in rows:
                 if row["sample_id"] == "bone1":
-                    row["panel_role"] = "holdout"
+                    row["model_source_env"] = "soil"
             write_tsv(metadata, list(rows[0]), rows)
-            conflicting = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "conflict_counts.tsv",
-                "--output-map",
-                root / "conflict_map.tsv",
-                "--summary",
-                root / "conflict_summary.tsv",
-                "--aggregate-by",
-                "unit_id",
-                "--exclude-panel-role",
-                "control,holdout",
-                check=False,
-            )
+            conflicting = self._prepare(root, metadata, counts, feature_qc, "conflict", check=False)
             self.assertNotEqual(conflicting.returncode, 0)
             self.assertIn("bone_unit", conflicting.stderr)
-            self.assertIn("panel_role", conflicting.stderr)
+            self.assertIn("model_source_env", conflicting.stderr)
 
             rows = read_tsv(metadata)
             for row in rows:
                 if row["sample_id"] == "bone1":
-                    row["panel_role"] = "source"
+                    row["model_source_env"] = "bone"
             write_tsv(metadata, list(rows[0]), rows)
             qc_rows = read_tsv(feature_qc)
             for row in qc_rows:
@@ -986,66 +612,17 @@ class ReferenceInterfaceTests(unittest.TestCase):
                     row["kraken_classified_reads"] = "0"
                     row["kraken_classified_fraction"] = "0"
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "filtered_counts.tsv",
-                "--output-map",
-                root / "filtered_map.tsv",
-                "--summary",
-                root / "filtered_summary.tsv",
-                "--exclusions",
-                root / "filtered_exclusions.tsv",
-                "--aggregate-by",
-                "unit_id",
-                "--exclude-panel-role",
-                "control,holdout",
-                "--min-kraken-classified-fraction",
-                "0.15",
-            )
+            self._prepare(root, metadata, counts, feature_qc, "filtered",
+                          "--min-kraken-classified-fraction", "0.15")
             mapping = {row["#SampleID"] for row in read_tsv(root / "filtered_map.tsv")}
             self.assertNotIn("bone_unit", mapping)
             excluded = {
                 row["input_sample_id"]: row["exclusion_reason"]
-                for row in read_tsv(root / "filtered_exclusions.tsv")
+                for row in read_tsv(root / "filtered_qc.tsv")
+                if row["included"] == "false"
             }
             self.assertTrue(excluded["bone1"].startswith("below_min_kraken"))
             self.assertEqual(excluded["bone1"], excluded["bone2"])
-
-    def test_prepare_allows_explicit_holdout_validation(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            rows = read_tsv(metadata)
-            for row in rows:
-                if row["sample_id"] == "blank1":
-                    row["panel_role"] = "holdout"
-            write_tsv(metadata, list(rows[0]), rows)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "holdout_counts.tsv",
-                "--output-map",
-                root / "holdout_map.tsv",
-                "--summary",
-                root / "holdout_summary.tsv",
-                "--aggregate-by",
-                "unit_id",
-            )
-            mapping = {row["#SampleID"] for row in read_tsv(root / "holdout_map.tsv")}
-            self.assertIn("blank_unit", mapping)
 
     def test_prepare_rejects_reserved_source_environment_names(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1056,30 +633,11 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 if row["sample_id"].startswith("soil"):
                     row["model_source_env"] = "Unknown"
             write_tsv(metadata, list(rows[0]), rows)
-            failed = run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "reserved_counts.tsv",
-                "--output-map",
-                root / "reserved_map.tsv",
-                "--summary",
-                root / "reserved_summary.tsv",
-                "--aggregate-by",
-                "unit_id",
-                "--exclude-panel-role",
-                "control,holdout",
-                check=False,
-            )
+            failed = self._prepare(root, metadata, counts, feature_qc, "reserved", check=False)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn("reserved result columns Unknown or SampleID", failed.stderr)
 
-    def test_all_taxon_scope_uses_bracken_yield_not_filtered_yield(self):
+    def test_all_taxon_scope_uses_rank_yield_not_filtered_yield(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)
@@ -1088,37 +646,9 @@ class ReferenceInterfaceTests(unittest.TestCase):
                 row["taxon_filter_retained_reads"] = "0"
                 row["taxon_filter_retained_fraction"] = "0"
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
-            run_script(
-                "prepare_sourcetracker2_inputs.py",
-                "--counts",
-                counts,
-                "--metadata",
-                metadata,
-                "--feature-sample-qc",
-                feature_qc,
-                "--output-counts",
-                root / "all_counts.tsv",
-                "--output-map",
-                root / "all_map.tsv",
-                "--summary",
-                root / "all_summary.tsv",
-                "--exclusions",
-                root / "all_excluded.tsv",
-                "--sample-qc",
-                root / "all_qc.tsv",
-                "--taxon-scope",
-                "all",
-                "--aggregate-by",
-                "unit_id",
-                "--exclude-source-env",
-                "bone",
-                "--exclude-panel-role",
-                "control,holdout",
-            )
+            self._prepare(root, metadata, counts, feature_qc, "all", "--taxon-scope", "all")
             mapping = {row["#SampleID"] for row in read_tsv(root / "all_map.tsv")}
-            self.assertEqual(mapping, {"soil_unit", "sink_unit"})
-            qc = read_tsv(root / "all_qc.tsv")
-            self.assertEqual({row["taxon_scope"] for row in qc}, {"all"})
+            self.assertEqual(mapping, {"bone_unit", "soil_unit", "sink_unit"})
 
     def test_seeded_sourcetracker_wrapper_validates_and_forwards_seed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1177,147 +707,6 @@ class ReferenceInterfaceTests(unittest.TestCase):
             self.assertNotEqual(mismatch.returncode, 0)
             self.assertIn("PYTHONHASHSEED must be exported", mismatch.stderr)
 
-    def test_plot_uses_uncertainty_and_abstains_without_hard_call(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            means = root / "mixing_proportions.txt"
-            stds = root / "mixing_proportions_stds.txt"
-            mapping = root / "map.tsv"
-            means.write_text("SampleID\tsoil\tbone\tUnknown\nsink1\t0.2\t0.1\t0.7\n")
-            stds.write_text("SampleID\tsoil\tbone\tUnknown\nsink1\t0.05\t0.02\t0.08\n")
-            write_tsv(
-                mapping,
-                ["#SampleID", "SourceSink", "Env"],
-                [{"#SampleID": "sink1", "SourceSink": "sink", "Env": "bone"}],
-            )
-            assignments = root / "assignments.tsv"
-            image = root / "plot.png"
-            run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                means,
-                "--uncertainty",
-                stds,
-                "--mapping",
-                mapping,
-                "--assignments",
-                assignments,
-                "--plot",
-                image,
-                "--max-unknown-prop",
-                "0.5",
-                "--min-top-known-prop",
-                "0.5",
-            )
-            result = read_tsv(assignments)[0]
-            self.assertEqual(result["assignment"], "ABSTAIN")
-            self.assertEqual(result["abstained"], "true")
-            self.assertEqual(result["top_known_std"], "0.05")
-            self.assertEqual(result["top_known_correct"], "NA")
-            self.assertGreater(image.stat().st_size, 100)
-
-            tie_mapping = root / "tie_map.tsv"
-            write_tsv(
-                tie_mapping,
-                ["#SampleID", "SourceSink", "Env"],
-                [{"#SampleID": "tie_sink", "SourceSink": "sink", "Env": "soil"}],
-            )
-            tie_means = root / "tie_means.txt"
-            tie_means.write_text(
-                "SampleID\tsoil\tbone\tUnknown\ntie_sink\t0.5\t0.5\t0\n"
-            )
-            tie_assignments = root / "tie_assignments.tsv"
-            run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                tie_means,
-                "--mapping",
-                tie_mapping,
-                "--assignments",
-                tie_assignments,
-                "--plot",
-                root / "tie.png",
-            )
-            tie_result = read_tsv(tie_assignments)[0]
-            self.assertEqual(tie_result["assignment"], "ABSTAIN")
-            self.assertIn("top_known_tie", tie_result["abstention_reason"])
-
-            duplicate = root / "duplicate_columns.txt"
-            duplicate.write_text(
-                "SampleID\tsoil\tsoil\tUnknown\nsink1\t0.4\t0.4\t0.2\n"
-            )
-            duplicate_result = run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                duplicate,
-                "--mapping",
-                mapping,
-                "--assignments",
-                root / "duplicate_assignments.tsv",
-                "--plot",
-                root / "duplicate.png",
-                check=False,
-            )
-            self.assertNotEqual(duplicate_result.returncode, 0)
-            self.assertIn("duplicate result column(s): soil", duplicate_result.stderr)
-
-            empty = root / "empty.txt"
-            empty.write_text("SampleID\tsoil\tUnknown\n")
-            empty_image = root / "empty.png"
-            missing_sink = run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                empty,
-                "--mapping",
-                mapping,
-                "--assignments",
-                root / "empty_assignments.tsv",
-                "--plot",
-                empty_image,
-                check=False,
-            )
-            self.assertNotEqual(missing_sink.returncode, 0)
-            self.assertIn("missing sink result(s): sink1", missing_sink.stderr)
-
-            malformed = root / "malformed.txt"
-            malformed.write_text("SampleID\tsoil\tUnknown\nsink1\t0.2\t0.2\n")
-            bad_sum = run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                malformed,
-                "--mapping",
-                mapping,
-                "--assignments",
-                root / "malformed_assignments.tsv",
-                "--plot",
-                root / "malformed.png",
-                check=False,
-            )
-            self.assertNotEqual(bad_sum.returncode, 0)
-            self.assertIn("sum to 0.4", bad_sum.stderr)
-
-            loo_mapping = root / "loo_map.tsv"
-            write_tsv(
-                loo_mapping,
-                ["#SampleID", "SourceSink", "Env"],
-                [{"#SampleID": "source1", "SourceSink": "source", "Env": "soil"}],
-            )
-            loo_means = root / "loo_means.txt"
-            loo_means.write_text("SampleID\tsoil\tUnknown\nsource1\t1\t0\n")
-            loo_image = root / "loo.png"
-            run_script(
-                "plot_sourcetracker2.py",
-                "--proportions",
-                loo_means,
-                "--mapping",
-                loo_mapping,
-                "--assignments",
-                root / "loo_assignments.tsv",
-                "--plot",
-                loo_image,
-                "--loo",
-            )
-            self.assertGreater(loo_image.stat().st_size, 100)
 
 
 if __name__ == "__main__":

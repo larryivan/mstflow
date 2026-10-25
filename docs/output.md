@@ -1,0 +1,57 @@
+# Output
+
+Everything is written under `--outdir` (default `results/`). Start with these.
+
+| Path | What it is |
+|---|---|
+| `summary/sample_summary.tsv` | One row per sample: fragments after trimming and host removal, host fraction, classified fraction, taxa detected, and flags |
+| `tables/` | Abundance tables across all samples |
+| `attribution/<label>/` | With `--attribution_methods`: every method's estimates, calls and their agreement, and with `--attribution_cv` how often each method was right; see [source attribution](attribution.md#outputs) |
+| `authentication/authentication.tsv` | With `--authentication_genomes`: whether the leading taxa of each ancient library show ancient DNA damage; see [authentication](authentication.md#output) |
+| `qc/multiqc/multiqc_report.html` | Every QC metric in one report, including the sample summary |
+
+## `summary/sample_summary.tsv`
+
+| Column | Meaning |
+|---|---|
+| `input` | Fragments in the raw files (read pairs for paired-end libraries) |
+| `after_trimming` | Fragments left after adapter and quality trimming; for ancient paired-end libraries, collapsed reads |
+| `after_host_removal` | Fragments left after removing host alignments |
+| `host_fraction` | Share of trimmed fragments that aligned to the host |
+| `classified`, `classified_fraction` | Fragments the classifier assigned to a taxon |
+| `genera` | Taxa at `--rank` with at least `--qc_min_taxon_reads` (10) reads (named `species`, `families` or `taxa` for other ranks), after the taxon filter if one is set |
+| `flags` | `ok`, or why the profile is too shallow to interpret: `few_reads` (fewer than `--qc_min_classified_reads`) or `few_genera` (fewer than `--qc_min_taxa`) |
+
+A flagged sample is not wrong, but its profile carries little information, and
+attributing it to a source is unreliable.
+
+## `tables/`
+
+The files start with the classifier, `kraken2_` or `krakenuniq_`; `G` is the rank
+(`--rank`) and `prokaryote` the taxon filter (`--taxon_filter`).
+
+| File | Contents |
+|---|---|
+| `kraken2_G_counts.tsv` | Reads the classifier placed in each genus or below it (rows), per sample (columns), all taxa |
+| `kraken2_G_relative_abundance.tsv` | The same as proportions of each sample |
+| `kraken2_G_features.tsv` | Taxon ID, name and rank of every row |
+| `kraken2_G_kmer_filter.tsv` | Taxa removed from a sample for too few distinct minimizers or k-mers, with the reads they had; empty when the filter is off |
+| `kraken2_G_prokaryote_*.tsv` | The same three tables restricted to bacteria and archaea |
+| `kraken2_G_prokaryote_filter_qc.tsv`, `*_sample_qc.tsv` | What the filter removed, and per-sample classifier totals |
+
+## Per-step files
+
+| Directory | Contents |
+|---|---|
+| `preprocess/fastp/`, `preprocess/adapterremoval/` | Trimming reports and fragment counts |
+| `host_removed/` | Host-removal logs and fragment counts |
+| `kraken2/` | Kraken2 reports (with and without minimizer data), read-length and confidence statistics |
+| `krakenuniq/` | With `--classifier krakenuniq`: KrakenUniq reports, with unique k-mers per taxon |
+| `qc/fastqc_raw/`, `qc/fastqc_clean/` | FastQC before trimming and after host removal |
+| `pipeline_info/` | Validated samplesheet, Nextflow report, timeline, trace and DAG |
+
+Each step that runs a tool also writes a `*.versions.yml` beside its output, recording the version used.
+
+Large intermediate FASTQ files stay in the Nextflow work directory unless
+`--publish_intermediates true` is set. Delete the work directory once you no longer
+need `-resume`.

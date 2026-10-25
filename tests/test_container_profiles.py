@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import unittest
@@ -49,8 +50,6 @@ class ContainerDirectiveTests(unittest.TestCase):
             "FILTER_HOST_ALIGNMENTS": ("filter_host_alignments.nf", "container_python_tools"),
             "PREPARE_KRAKEN_INPUT": ("prepare_kraken_input.nf", "container_python_tools"),
             "KRAKEN2_PROFILE": ("kraken2.nf", "container_kraken2"),
-            "SELECT_BRACKEN_LENGTH": ("select_bracken_length.nf", "container_python_tools"),
-            "BRACKEN_PROFILE": ("bracken.nf", "container_bracken"),
         }
         for process, (filename, parameter) in expected.items():
             text = (ROOT / "modules" / filename).read_text(encoding="utf-8")
@@ -60,49 +59,24 @@ class ContainerDirectiveTests(unittest.TestCase):
 
     def test_container_defaults_are_digest_pinned(self):
         config = (ROOT / "nextflow.config").read_text(encoding="utf-8")
-        for parameter in (
-            "container_fastqc",
-            "container_fastp",
-            "container_adapterremoval",
-            "container_bwa",
-            "container_kraken2",
-            "container_bracken",
-            "container_biom",
-            "container_multiqc",
-            "container_python_tools",
-            "container_sourcetracker2",
-        ):
-            with self.subTest(parameter=parameter):
-                line = next(
-                    candidate
-                    for candidate in config.splitlines()
-                    if candidate.strip().startswith(f"{parameter} = ")
-                )
-                self.assertIn("@sha256:", line)
+        images = dict(re.findall(r"^\s*(container_\w+) = '([^']+)'", config, re.MULTILINE))
+        self.assertGreater(len(images), 10)
+        # The attribution image is pinned by digest once it is published.
+        for parameter, image in images.items():
+            if parameter != "container_attribution":
+                with self.subTest(parameter=parameter):
+                    self.assertIn("@sha256:", image)
 
 
 @unittest.skipUnless(NEXTFLOW, "nextflow is required for profile tests")
 class ExecutionProfileTests(unittest.TestCase):
     def test_profiles_enable_exactly_one_dependency_engine(self):
-        expectations = {
-            "standard": ("local", None),
-            "conda": ("local", "conda"),
-            "docker": ("local", "docker"),
-            "apptainer": ("local", "apptainer"),
-            "singularity": ("local", "singularity"),
-            "slurm": ("slurm", "conda"),
-            "slurm_conda": ("slurm", "conda"),
-            "slurm_apptainer": ("slurm", "apptainer"),
-            "slurm_singularity": ("slurm", "singularity"),
-        }
         engines = ("conda", "docker", "apptainer", "singularity")
-        for profile, (executor, enabled_engine) in expectations.items():
+        for profile in engines:
             with self.subTest(profile=profile):
                 values = flat_config(profile)
-                self.assertEqual(values["process.executor"], executor)
                 for engine in engines:
-                    expected = "true" if engine == enabled_engine else "false"
-                    self.assertEqual(values[f"{engine}.enabled"], expected)
+                    self.assertEqual(values.get(f"{engine}.enabled", "false"), str(engine == profile).lower())
 
 
 if __name__ == "__main__":

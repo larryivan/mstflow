@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use MSTFlow, please cite it as below."
+title: "MSTFlow: fragment-aware metagenomic profiling for ancient and modern DNA"
+type: software
+authors:
+  - family-names: Han
+    given-names: Yufan
+repository-code: "https://github.com/larryivan/mstflow"
+license: MIT
+version: 0.1.0
+date-released: "2026-10-21"
+keywords:
+  - ancient DNA
+  - metagenomics
+  - Kraken2
+  - SourceTracker2
+  - Nextflow

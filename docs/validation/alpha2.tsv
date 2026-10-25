@@ -1,0 +1,10 @@
+sink	unknown_alpha2_0.001	unknown_alpha2_0.1
+calculus	0.9257	0.0379
+sediment	0.5969	0.0456
+coprolite	0.9875	0.9431
+bone	0.9353	0.0279
+plaque	0.7330	0.0108
+faeces	0.9611	0.0089
+mix_oral_gut	0.8620	0.0148
+mix_oral_gut_ancient	0.8363	0.0100
+mix_gut_soil	0.9294	0.0122

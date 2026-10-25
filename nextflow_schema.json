@@ -1,0 +1,758 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/larryivan/mstflow/main/nextflow_schema.json",
+    "title": "larryivan/mstflow pipeline parameters",
+    "description": "Fragment-aware metagenomic profiling for ancient and modern DNA, with optional source attribution",
+    "type": "object",
+    "$defs": {
+        "input_output_options": {
+            "title": "Input and output",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "description": "Samplesheet (TSV) listing every library; a local path or a URL.",
+                    "format": "path",
+                    "help_text": "Required columns: `sample_id`, `fastq_1`, `age_group` (`ancient` or `modern`). Add `fastq_2` for paired-end libraries. Relative paths are read relative to the samplesheet. See docs/usage.md."
+                },
+                "outdir": {
+                    "type": "string",
+                    "description": "Directory for results.",
+                    "default": "results",
+                    "format": "directory-path"
+                },
+                "publish_intermediates": {
+                    "type": "boolean",
+                    "description": "Also copy large intermediate FASTQ files to the results directory.",
+                    "default": false
+                },
+                "multiqc_title": {
+                    "type": "string",
+                    "description": "Title shown on the MultiQC report.",
+                    "default": "mstflow",
+                    "pattern": "^[^'\\n\\r]*$"
+                }
+            },
+            "required": [
+                "input"
+            ]
+        },
+        "host_removal_options": {
+            "title": "Host removal",
+            "type": "object",
+            "fa_icon": "fas fa-user-slash",
+            "properties": {
+                "remove_host": {
+                    "type": "boolean",
+                    "description": "Remove reads that align to the host genome.",
+                    "default": true
+                },
+                "host_fasta": {
+                    "type": "string",
+                    "description": "Host FASTA with its BWA index (.amb .ann .bwt .pac .sa) next to it; a local path or a URL.",
+                    "format": "path",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "help_text": "Used for every sample whose `host_ref` is empty or `default`. Build the index once with `bwa index host.fa`."
+                },
+                "host_min_mapq": {
+                    "type": "integer",
+                    "description": "Minimum mapping quality for a host alignment to remove a fragment.",
+                    "default": 0,
+                    "minimum": 0,
+                    "help_text": "0 removes a fragment when either mate has any primary host alignment."
+                },
+                "default_host_group": {
+                    "type": "string",
+                    "description": "Host group that the default host FASTA represents.",
+                    "default": "human",
+                    "pattern": "^[^'\\n\\r]*$"
+                },
+                "require_explicit_host_for_nondefault": {
+                    "type": "boolean",
+                    "description": "Require an explicit `host_ref` for samples whose `host_group` differs from the default.",
+                    "default": true
+                },
+                "require_explicit_host_action": {
+                    "type": "boolean",
+                    "description": "Require every samplesheet row to declare `host_action` (remove or skip).",
+                    "default": false
+                },
+                "host_remove_max_forks": {
+                    "type": "integer",
+                    "description": "Maximum concurrent host-alignment tasks.",
+                    "default": 4,
+                    "minimum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "preprocessing_options": {
+            "title": "Read preprocessing",
+            "type": "object",
+            "fa_icon": "fas fa-cut",
+            "properties": {
+                "min_length": {
+                    "type": "integer",
+                    "description": "Shortest read kept after trimming, for ancient and modern libraries alike.",
+                    "default": 35,
+                    "minimum": 1
+                },
+                "ancient_pe_mode": {
+                    "type": "string",
+                    "description": "How ancient paired-end libraries are counted.",
+                    "default": "collapsed_only",
+                    "enum": [
+                        "collapsed_only",
+                        "all_fragments"
+                    ],
+                    "help_text": "`collapsed_only` keeps merged reads only. `all_fragments` also keeps complete unmerged pairs, each submitted to Kraken2 as one paired record. See docs/design-notes.md."
+                },
+                "fastp_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to fastp.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "adapterremoval_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to AdapterRemoval.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "fastq_gzip_level": {
+                    "type": "integer",
+                    "description": "Gzip level (0-9) for FASTQ written by the workflow's own helpers.",
+                    "default": 6,
+                    "minimum": 0,
+                    "maximum": 9,
+                    "hidden": true
+                }
+            }
+        },
+        "classifier_options": {
+            "title": "Classifier",
+            "type": "object",
+            "fa_icon": "fas fa-microscope",
+            "description": "Kraken2, or KrakenUniq in its place.",
+            "properties": {
+                "classifier": {
+                    "type": "string",
+                    "description": "Which classifier to use.",
+                    "default": "kraken2",
+                    "enum": [
+                        "kraken2",
+                        "krakenuniq"
+                    ],
+                    "help_text": "`kraken2` classifies with Kraken2. `krakenuniq` uses KrakenUniq instead, as aMeta does, and removes taxa whose reads cover too few unique k-mers. Use one classifier and database for sources and sinks alike."
+                },
+                "krakenuniq_db": {
+                    "type": "string",
+                    "description": "KrakenUniq database: a directory with database.kdb, database.idx and taxDB, or a .tar.gz of one; local or a URL.",
+                    "format": "path",
+                    "pattern": "^[^'\\n\\r]*$"
+                },
+                "krakenuniq_preload_size": {
+                    "type": "string",
+                    "description": "Load the KrakenUniq database in chunks of this size, e.g. 16G; unset loads it whole.",
+                    "pattern": "^[0-9]+[KMG]$"
+                },
+                "krakenuniq_min_kmers": {
+                    "type": "integer",
+                    "description": "Remove a taxon from a sample when its reads cover fewer unique k-mers.",
+                    "default": 1000,
+                    "minimum": 0
+                }
+            }
+        },
+        "kraken2_options": {
+            "title": "Kraken2 classification",
+            "type": "object",
+            "fa_icon": "fas fa-sitemap",
+            "properties": {
+                "run_kraken2": {
+                    "type": "boolean",
+                    "description": "Classify reads (with Kraken2 or KrakenUniq); false stops after preprocessing.",
+                    "default": true,
+                    "hidden": true
+                },
+                "kraken2_db": {
+                    "type": "string",
+                    "description": "Kraken2 database: a directory (hash.k2d, opts.k2d, taxo.k2d) or a .tar.gz of one, local or a URL. Required with the default classifier.",
+                    "format": "path",
+                    "help_text": "Prebuilt indexes from https://benlangmead.github.io/aws-indexes/k2 can be given as the downloaded .tar.gz or its URL; the workflow unpacks it."
+                },
+                "kraken2_confidence": {
+                    "type": "number",
+                    "description": "Kraken2 confidence threshold.",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "kraken2_minimum_hit_groups": {
+                    "type": "integer",
+                    "description": "Kraken2 minimum hit groups.",
+                    "default": 2,
+                    "minimum": 1
+                },
+                "kraken2_kmer_len": {
+                    "type": "integer",
+                    "description": "k-mer length the database was built with.",
+                    "default": 35,
+                    "minimum": 1
+                },
+                "kraken2_min_read_len": {
+                    "type": "integer",
+                    "description": "Shortest read submitted to Kraken2; must be at least `kraken2_kmer_len`.",
+                    "default": 35,
+                    "minimum": 1
+                },
+                "kraken2_use_names": {
+                    "type": "boolean",
+                    "description": "Include taxon names in Kraken2 output.",
+                    "default": true,
+                    "hidden": true
+                },
+                "kraken2_report_minimizer_data": {
+                    "type": "boolean",
+                    "description": "Include minimizer counts in the Kraken2 report.",
+                    "default": true,
+                    "hidden": true
+                },
+                "kraken2_min_distinct_minimizers": {
+                    "type": "integer",
+                    "description": "Remove a taxon from a sample when its reads cover fewer distinct minimizers (0: keep all).",
+                    "default": 0,
+                    "minimum": 0,
+                    "help_text": "False positives often rest on many reads from a few short stretches of a genome. Distinct minimizers measure how much of the genome the reads cover, as unique k-mers do in KrakenUniq. Removals are listed in `tables/kraken2_<rank>_kmer_filter.tsv`. See docs/usage.md."
+                },
+                "kraken2_save_read_classifications": {
+                    "type": "boolean",
+                    "description": "Keep per-read Kraken2 classifications (large).",
+                    "default": false
+                },
+                "kraken2_extra_args": {
+                    "type": "string",
+                    "description": "Extra arguments passed to Kraken2.",
+                    "default": "",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "hidden": true
+                },
+                "kraken2_cpus": {
+                    "type": "integer",
+                    "description": "CPUs per Kraken2 task.",
+                    "default": 16,
+                    "minimum": 1
+                },
+                "kraken2_memory": {
+                    "type": "string",
+                    "description": "Memory per Kraken2 task; must hold the whole database.",
+                    "default": "160 GB",
+                    "pattern": "^\\d+(\\.\\d+)?\\s*[KMGT]?B$"
+                },
+                "kraken2_time": {
+                    "type": "string",
+                    "description": "Time limit per Kraken2 task.",
+                    "default": "36h",
+                    "pattern": "^(\\d+(\\.\\d+)?\\s*(ms|s|m|h|d)\\s*)+$"
+                },
+                "kraken2_max_forks": {
+                    "type": "integer",
+                    "description": "Maximum concurrent Kraken2 tasks.",
+                    "default": 1,
+                    "minimum": 1
+                }
+            }
+        },
+        "count_table_options": {
+            "title": "Count table",
+            "type": "object",
+            "fa_icon": "fas fa-table",
+            "description": "The count table holds, for each taxon at one rank, the reads the classifier placed in it or below it.",
+            "properties": {
+                "rank": {
+                    "type": "string",
+                    "description": "Taxonomic rank of the count tables.",
+                    "default": "G",
+                    "enum": [
+                        "D",
+                        "P",
+                        "C",
+                        "O",
+                        "F",
+                        "G",
+                        "S"
+                    ]
+                }
+            }
+        },
+        "taxon_filter_options": {
+            "title": "Taxon filter",
+            "type": "object",
+            "fa_icon": "fas fa-filter",
+            "properties": {
+                "taxon_filter": {
+                    "type": "string",
+                    "description": "Restrict the filtered tables to bacteria and archaea.",
+                    "default": "none",
+                    "enum": [
+                        "none",
+                        "prokaryote"
+                    ]
+                },
+                "taxdump": {
+                    "type": "string",
+                    "description": "NCBI taxdump: a directory with nodes.dmp (and names.dmp, for SourcePredict), or the nodes.dmp file itself, with the others beside it; local or a URL.",
+                    "format": "path",
+                    "help_text": "Needed for `--taxon_filter prokaryote`, SourcePredict and authentication. Use the snapshot the classifier database was built from."
+                },
+                "drop_taxids": {
+                    "type": [
+                        "string",
+                        "integer"
+                    ],
+                    "description": "Comma-separated taxon IDs dropped from every table.",
+                    "default": "0,1",
+                    "pattern": "^[^'\\n\\r]*$"
+                }
+            }
+        },
+        "authentication_options": {
+            "title": "Authentication (optional)",
+            "type": "object",
+            "fa_icon": "fas fa-history",
+            "description": "Test whether the most abundant taxa of each ancient library carry ancient DNA damage, with Bowtie2 and PyDamage.",
+            "properties": {
+                "authentication_genomes": {
+                    "type": "string",
+                    "description": "Reference genomes of the taxa to authenticate: a FASTA, plain or gzipped, whose headers carry `kraken:taxid|<taxid>`; local or a URL.",
+                    "format": "path",
+                    "pattern": "^[^'\\n\\r]*$",
+                    "help_text": "A Bowtie2 index beside it (`<fasta>.1.bt2` and the rest) is used when present, and built otherwise. Needs `--taxdump`. See docs/authentication.md."
+                },
+                "authentication_top_taxa": {
+                    "type": "integer",
+                    "description": "Authenticate this many of the most abundant taxa in each ancient library.",
+                    "default": 10,
+                    "minimum": 1
+                },
+                "authentication_min_reads": {
+                    "type": "integer",
+                    "description": "A taxon needs this many reads in the count table to be chosen, and this many aligned reads for its damage to be tested.",
+                    "default": 100,
+                    "minimum": 1
+                }
+            }
+        },
+        "attribution_options": {
+            "title": "Source attribution (optional)",
+            "type": "object",
+            "fa_icon": "fas fa-project-diagram",
+            "description": "Estimate where each sink's microbes came from. Needs `source_sink` and `model_source_env` columns in the samplesheet.",
+            "properties": {
+                "attribution_methods": {
+                    "type": "string",
+                    "description": "Methods to run, comma-separated; empty runs none.",
+                    "default": "",
+                    "pattern": "^((sourcetracker2|feast|fastst|sourceid_nmf|sourcepredict)(,(sourcetracker2|feast|fastst|sourceid_nmf|sourcepredict))*)?$",
+                    "help_text": "`sourcetracker2`, `feast`, `fastst` (experimental), `sourceid_nmf` and `sourcepredict`. All read the same table, so their results can be compared; see docs/attribution.md."
+                },
+                "attribution_label": {
+                    "type": "string",
+                    "description": "Name of this analysis; results go to `attribution/<label>/`.",
+                    "default": "default",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                },
+                "attribution_aggregate_by": {
+                    "type": "string",
+                    "description": "Unit each method models: each library, or all runs sharing a `unit_id`.",
+                    "default": "unit_id",
+                    "enum": [
+                        "sample_id",
+                        "unit_id"
+                    ]
+                },
+                "attribution_taxon_scope": {
+                    "type": "string",
+                    "description": "Taxa given to the methods: after the taxon filter, or all.",
+                    "default": "filtered",
+                    "enum": [
+                        "filtered",
+                        "all"
+                    ]
+                },
+                "attribution_cv": {
+                    "type": "boolean",
+                    "description": "Also score every method by cross-validation on the sources.",
+                    "default": false,
+                    "help_text": "Sources sharing a value of `attribution_cv_group` are held out together, run as sinks of known origin, and scored. Results go to `attribution/<label>/evaluation/`."
+                },
+                "attribution_cv_group": {
+                    "type": "string",
+                    "description": "Samplesheet column whose values are held out together in cross-validation.",
+                    "default": "project",
+                    "help_text": "Holding out whole studies tests a method on studies it has not seen; libraries without a value are held out one by one."
+                },
+                "attribution_max_unknown": {
+                    "type": "number",
+                    "description": "Abstain when the unknown share reaches this value.",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "attribution_min_top_known": {
+                    "type": "number",
+                    "description": "Abstain when the leading known source is below this value.",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "attribution_min_margin": {
+                    "type": "number",
+                    "description": "Abstain when the two leading known sources are closer than this.",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "attribution_seed": {
+                    "type": "integer",
+                    "description": "Random seed for every method.",
+                    "default": 1,
+                    "minimum": 0,
+                    "maximum": 2147483647
+                },
+                "attribution_min_classified_fraction": {
+                    "type": "number",
+                    "description": "Leave out libraries with a smaller Kraken2 classified fraction.",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "hidden": true
+                },
+                "attribution_min_retained_reads": {
+                    "type": "integer",
+                    "description": "Leave out libraries with fewer reads after the taxon filter.",
+                    "default": 1000,
+                    "minimum": 0,
+                    "hidden": true
+                },
+                "attribution_min_retained_fraction": {
+                    "type": "number",
+                    "description": "Leave out libraries keeping a smaller fraction of reads after the taxon filter.",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "sourcetracker2_options": {
+            "title": "SourceTracker2",
+            "type": "object",
+            "fa_icon": "fas fa-sliders-h",
+            "properties": {
+                "sourcetracker2_source_rarefaction_depth": {
+                    "type": "integer",
+                    "description": "Rarefy pooled sources to this depth (0: no rarefaction).",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "sourcetracker2_sink_rarefaction_depth": {
+                    "type": "integer",
+                    "description": "Rarefy sinks to this depth (0: no rarefaction).",
+                    "default": 1000,
+                    "minimum": 0
+                },
+                "sourcetracker2_alpha2": {
+                    "type": "number",
+                    "description": "Prior on the unknown source, as a fraction of each sink's counts.",
+                    "default": 0.1,
+                    "exclusiveMinimum": 0,
+                    "help_text": "0.1 is the default of the original SourceTracker and of SourceTracker2's source code; the 2.0.1 release uses 0.001, with which the unknown source can absorb sinks that clearly match a source. See docs/attribution.md."
+                },
+                "sourcetracker2_alpha1": {
+                    "type": "number",
+                    "description": "Prior on the known sources.",
+                    "default": 0.001,
+                    "exclusiveMinimum": 0,
+                    "hidden": true
+                },
+                "sourcetracker2_beta": {
+                    "type": "number",
+                    "description": "Prior on the mixing proportions.",
+                    "default": 10,
+                    "exclusiveMinimum": 0,
+                    "hidden": true
+                },
+                "sourcetracker2_restarts": {
+                    "type": "integer",
+                    "description": "Independent Gibbs chains per sink.",
+                    "default": 10,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourcetracker2_draws_per_restart": {
+                    "type": "integer",
+                    "description": "Draws taken from each chain.",
+                    "default": 1,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourcetracker2_burnin": {
+                    "type": "integer",
+                    "description": "Passes before the first draw.",
+                    "default": 100,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourcetracker2_delay": {
+                    "type": "integer",
+                    "description": "Passes between draws.",
+                    "default": 10,
+                    "minimum": 1,
+                    "hidden": true
+                }
+            }
+        },
+        "attribution_method_options": {
+            "title": "FEAST, SourceID-NMF and SourcePredict",
+            "type": "object",
+            "fa_icon": "fas fa-sliders-h",
+            "properties": {
+                "feast_em_iterations": {
+                    "type": "integer",
+                    "description": "FEAST: expectation-maximisation iterations.",
+                    "default": 1000,
+                    "minimum": 1
+                },
+                "feast_coverage": {
+                    "type": "integer",
+                    "description": "FEAST: rarefaction depth (0: the smallest sink or pooled source).",
+                    "default": 0,
+                    "minimum": 0
+                },
+                "sourceid_nmf_code": {
+                    "type": "string",
+                    "description": "SourceID-NMF: where its code is fetched from, a URL or a directory.",
+                    "default": "https://raw.githubusercontent.com/ZiyiHuang0708/SourceID-NMF/4fd1cdff0b2781cdae8bf1f5c71aa6b72779578a",
+                    "help_text": "SourceID-NMF has no licence, so MSTFlow does not redistribute it. By default its files are fetched from the authors' repository at a fixed commit; on machines without internet access, clone the repository and give its directory."
+                },
+                "sourceid_nmf_iterations": {
+                    "type": "integer",
+                    "description": "SourceID-NMF: maximum iterations.",
+                    "default": 2000,
+                    "minimum": 1
+                },
+                "sourceid_nmf_rho": {
+                    "type": "integer",
+                    "description": "SourceID-NMF: penalty parameter.",
+                    "default": 1,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourceid_nmf_weight": {
+                    "type": "integer",
+                    "description": "SourceID-NMF: weighting matrix coefficient.",
+                    "default": 1,
+                    "minimum": 1,
+                    "hidden": true
+                },
+                "sourceid_nmf_tolerance": {
+                    "type": "number",
+                    "description": "SourceID-NMF: convergence threshold.",
+                    "default": 1e-06,
+                    "exclusiveMinimum": 0,
+                    "hidden": true
+                },
+                "sourcepredict_neighbors": {
+                    "type": "integer",
+                    "description": "SourcePredict: neighbours for its classifier (0: chosen automatically).",
+                    "default": 0,
+                    "minimum": 0
+                },
+                "sourcepredict_unknown_alpha": {
+                    "type": "number",
+                    "description": "SourcePredict: share of the sink used to model an unknown source.",
+                    "default": 0.1,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "hidden": true
+                },
+                "sourcepredict_normalization": {
+                    "type": "string",
+                    "description": "SourcePredict: count normalisation.",
+                    "default": "SUBSAMPLE",
+                    "enum": [
+                        "SUBSAMPLE",
+                        "GMPR",
+                        "RLE"
+                    ],
+                    "hidden": true
+                },
+                "sourcepredict_distance": {
+                    "type": "string",
+                    "description": "SourcePredict: distance between samples.",
+                    "default": "weighted_unifrac",
+                    "enum": [
+                        "weighted_unifrac",
+                        "unweighted_unifrac"
+                    ],
+                    "hidden": true
+                },
+                "sourcepredict_embedding": {
+                    "type": "string",
+                    "description": "SourcePredict: embedding (auto: t-SNE for large panels, MDS for small ones).",
+                    "default": "auto",
+                    "enum": [
+                        "auto",
+                        "TSNE",
+                        "UMAP",
+                        "MDS"
+                    ],
+                    "hidden": true
+                }
+            }
+        },
+        "container_options": {
+            "title": "Containers",
+            "type": "object",
+            "fa_icon": "fab fa-docker",
+            "properties": {
+                "container_fastqc": {
+                    "type": "string",
+                    "description": "Container image for FastQC.",
+                    "hidden": true
+                },
+                "container_fastp": {
+                    "type": "string",
+                    "description": "Container image for fastp.",
+                    "hidden": true
+                },
+                "container_adapterremoval": {
+                    "type": "string",
+                    "description": "Container image for AdapterRemoval.",
+                    "hidden": true
+                },
+                "container_bwa": {
+                    "type": "string",
+                    "description": "Container image for BWA.",
+                    "hidden": true
+                },
+                "container_kraken2": {
+                    "type": "string",
+                    "description": "Container image for Kraken2.",
+                    "hidden": true
+                },
+                "container_multiqc": {
+                    "type": "string",
+                    "description": "Container image for MultiQC.",
+                    "hidden": true
+                },
+                "container_python_tools": {
+                    "type": "string",
+                    "description": "Container image for the workflow's Python helpers.",
+                    "hidden": true
+                },
+                "container_sourcetracker2": {
+                    "type": "string",
+                    "description": "Container image for SourceTracker2.",
+                    "hidden": true
+                },
+                "container_sourcepredict": {
+                    "type": "string",
+                    "description": "Container image for SourcePredict.",
+                    "hidden": true
+                },
+                "container_attribution": {
+                    "type": "string",
+                    "description": "Container image for FEAST, FastST and SourceID-NMF.",
+                    "hidden": true
+                },
+                "container_krakenuniq": {
+                    "type": "string",
+                    "description": "Container image for KrakenUniq.",
+                    "hidden": true
+                },
+                "container_bowtie2": {
+                    "type": "string",
+                    "description": "Container image for Bowtie2 and samtools.",
+                    "hidden": true
+                },
+                "container_pydamage": {
+                    "type": "string",
+                    "description": "Container image for PyDamage.",
+                    "hidden": true
+                }
+            }
+        },
+        "sample_qc_options": {
+            "title": "Sample summary flags",
+            "type": "object",
+            "fa_icon": "fas fa-flag",
+            "properties": {
+                "qc_min_classified_reads": {
+                    "type": "integer",
+                    "default": 10000,
+                    "minimum": 0,
+                    "description": "Flag samples with fewer classified fragments than this."
+                },
+                "qc_min_taxa": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 0,
+                    "description": "Flag samples with fewer taxa (at --rank, after the taxon filter) than this.",
+                    "help_text": "Shallow profiles carry little information, and downstream attribution of them is unreliable."
+                },
+                "qc_min_taxon_reads": {
+                    "type": "integer",
+                    "description": "A taxon counts towards `--qc_min_taxa` only with at least this many reads.",
+                    "default": 10,
+                    "minimum": 1
+                }
+            }
+        }
+    },
+    "allOf": [
+        {
+            "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/host_removal_options"
+        },
+        {
+            "$ref": "#/$defs/preprocessing_options"
+        },
+        {
+            "$ref": "#/$defs/classifier_options"
+        },
+        {
+            "$ref": "#/$defs/kraken2_options"
+        },
+        {
+            "$ref": "#/$defs/count_table_options"
+        },
+        {
+            "$ref": "#/$defs/taxon_filter_options"
+        },
+        {
+            "$ref": "#/$defs/authentication_options"
+        },
+        {
+            "$ref": "#/$defs/attribution_options"
+        },
+        {
+            "$ref": "#/$defs/sourcetracker2_options"
+        },
+        {
+            "$ref": "#/$defs/attribution_method_options"
+        },
+        {
+            "$ref": "#/$defs/sample_qc_options"
+        },
+        {
+            "$ref": "#/$defs/container_options"
+        }
+    ]
+}

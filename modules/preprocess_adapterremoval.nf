@@ -17,47 +17,29 @@ process ADAPTERREMOVAL_RAW {
     script:
     def id = meta.id
     def readList = (reads instanceof List ? reads : [reads]).collect { read -> read.toString() }
-    def extraArgs = params.adapterremoval_extra_args ?: ''
-    if (readList.size() == 2) {
-        """
-        mkdir -p adapterremoval_raw
-        AdapterRemoval \
-            --file1 "${readList[0]}" \
-            --file2 "${readList[1]}" \
-            --basename "adapterremoval_raw/${id}.ar" \
-            --threads ${task.cpus} \
-            --trimns \
-            --trimqualities \
-            --minquality 20 \
-            --minlength ${params.min_length_ancient} \
-            --gzip \
-            --collapse \
-            --collapse-deterministic \
-            ${extraArgs} \
-            > "${id}.adapterremoval.log" 2>&1
+    def files = readList.size() == 2
+        ? "--file1 \"${readList[0]}\" --file2 \"${readList[1]}\" --collapse --collapse-deterministic"
+        : "--file1 \"${readList[0]}\""
+    // Recent Illumina instruments write quality 42 ('K'); AdapterRemoval rejects anything
+    // above 41 unless told otherwise.
+    """
+    mkdir -p adapterremoval_raw
+    AdapterRemoval \
+        ${files} \
+        --basename "adapterremoval_raw/${id}.ar" \
+        --threads ${task.cpus} \
+        --trimns \
+        --trimqualities \
+        --minquality 20 \
+        --qualitymax 42 \
+        --minlength ${params.min_length} \
+        --gzip \
+        ${params.adapterremoval_extra_args} \
+        > "${id}.adapterremoval.log" 2>&1
 
-        version=\$(AdapterRemoval --version 2>&1 | head -n 1 | sed 's/^AdapterRemoval ver. //')
-        printf '"${task.process}":\n    AdapterRemoval: "%s"\n' "\$version" > "${id}.preprocess_adapterremoval.versions.yml"
-        """
-    } else {
-        """
-        mkdir -p adapterremoval_raw
-        AdapterRemoval \
-            --file1 "${readList[0]}" \
-            --basename "adapterremoval_raw/${id}.ar" \
-            --threads ${task.cpus} \
-            --trimns \
-            --trimqualities \
-            --minquality 20 \
-            --minlength ${params.min_length_ancient} \
-            --gzip \
-            ${extraArgs} \
-            > "${id}.adapterremoval.log" 2>&1
-
-        version=\$(AdapterRemoval --version 2>&1 | head -n 1 | sed 's/^AdapterRemoval ver. //')
-        printf '"${task.process}":\n    AdapterRemoval: "%s"\n' "\$version" > "${id}.preprocess_adapterremoval.versions.yml"
-        """
-    }
+    version=\$(AdapterRemoval --version 2>&1 | head -n 1 | sed 's/^AdapterRemoval ver. //')
+    printf '"${task.process}":\n    AdapterRemoval: "%s"\n' "\$version" > "${id}.preprocess_adapterremoval.versions.yml"
+    """
 
     stub:
     def id = meta.id

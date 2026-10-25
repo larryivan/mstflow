@@ -122,7 +122,6 @@ class Kraken2ModuleContractTests(unittest.TestCase):
                 reads / "sample.prehost_R1.fq.gz",
                 reads / "sample.prehost_R2.fq.gz",
             ]
-            age_group = "modern"
         elif layout in {"MIXED", "MIXED_DEHOSTED"}:
             stage = "prehost" if layout == "MIXED" else "dehosted"
             write_fastq(reads / f"sample.{stage}_se.fq.gz", [("collapsed", "ACGT" * 15)])
@@ -133,11 +132,9 @@ class Kraken2ModuleContractTests(unittest.TestCase):
                 reads / f"sample.{stage}_R1.fq.gz",
                 reads / f"sample.{stage}_R2.fq.gz",
             ]
-            age_group = "ancient"
         else:
             write_fastq(reads / "sample.prehost.fq.gz", [("frag", "ACGT" * 15)])
             read_files = [reads / "sample.prehost.fq.gz"]
-            age_group = "ancient"
 
         results = root / "results"
         read_list = ", ".join(f"file({groovy_string(path)})" for path in read_files)
@@ -166,7 +163,7 @@ class Kraken2ModuleContractTests(unittest.TestCase):
                 workflow {{
                     biological_reads = Channel.of(
                         tuple(
-                            [id: 'sample', age_group: {groovy_string(age_group)}],
+                            [id: 'sample'],
                             [{read_list}]
                         )
                     )
@@ -174,14 +171,8 @@ class Kraken2ModuleContractTests(unittest.TestCase):
                     fragment_helper = Channel.value(file({groovy_string(FRAGMENT_HELPER)}))
                     PREPARE_KRAKEN_INPUT(biological_reads, prepare_script, fragment_helper)
                     kraken_input = PREPARE_KRAKEN_INPUT.out.prepared.map {{
-                        meta, prepared_reads, read_length, input_mode ->
-                            tuple(
-                                meta,
-                                prepared_reads,
-                                read_length,
-                                input_mode,
-                                file({groovy_string(database)})
-                            )
+                        meta, prepared_reads, read_length ->
+                            tuple(meta, prepared_reads, read_length, file({groovy_string(database)}))
                     }}
                     KRAKEN2_PROFILE(kraken_input)
                 }}
@@ -301,37 +292,6 @@ class Kraken2ModuleContractTests(unittest.TestCase):
         self.assertIn("unable to open database", command_stderr)
         self.assertNotIn("ignored an unrecognised option", command_stderr)
 
-    def test_mate_identity_is_verified_before_kraken2_runs(self):
-        """Kraken2 2.1.6 cannot check mate names, so the helper must."""
-        temporary_directory = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary_directory.cleanup)
-        root = Path(temporary_directory.name)
-        r1 = root / "R1.fq.gz"
-        r2 = root / "R2.fq.gz"
-        write_fastq(r1, [("first/1", "ACGT" * 15)])
-        write_fastq(r2, [("different/2", "TGCA" * 15)])
-        completed = subprocess.run(
-            [
-                "python3",
-                str(FRAGMENT_HELPER),
-                "stats",
-                "--r1",
-                str(r1),
-                "--r2",
-                str(r2),
-                "--output",
-                str(root / "stats.tsv"),
-                "--minimum-usable-span",
-                "35",
-                "--kmer-length",
-                "35",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("paired FASTQ name mismatch", completed.stderr)
 
 
 if __name__ == "__main__":
