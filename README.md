@@ -2,7 +2,7 @@
 
 <p align="center">
 Metagenomic profiling of ancient and modern DNA in one analysis,<br>
-and source attribution with five methods, scored on your own data.
+and source attribution with five methods, plus a test of which one works on your samples.
 </p>
 
 <p align="center">
@@ -61,7 +61,21 @@ nextflow run larryivan/mstflow -profile docker \
     --host_fasta chm13v2.0.fa
 ```
 
-`--kraken2_db` takes a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2) as downloaded (`.tar.gz` or URL), and `--host_fasta` a BWA-indexed genome. Source attribution and authentication are switched on with a few more options; see [usage](docs/usage.md). `--help` lists everything.
+`--kraken2_db` takes a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2) as downloaded (`.tar.gz` or URL), and `--host_fasta` a BWA-indexed genome. That gives genus tables. `--help` lists every option.
+
+**To attribute sinks and score the methods,** add three columns that label the libraries of known origin as *sources*, name their environment and say which study they come from:
+
+| sample_id | source_sink | model_source_env | project |
+|---|---|---|---|
+| calculus_01 | sink | | |
+| oral_01 | source | oral | study_A |
+| gut_01 | source | gut | study_A |
+| oral_02 | source | oral | study_B |
+| gut_02 | source | gut | study_B |
+
+and switch it on with `--attribution_methods sourcetracker2,feast --attribution_cv true`. MSTFlow estimates where each sink's microbes came from, then holds out one study's sources at a time, treats them as sinks of known origin and reports how often each method names the right environment. [Details](docs/attribution.md)
+
+To test ancient taxa for damage, give reference genomes with `--authentication_genomes`; see [usage](docs/usage.md).
 
 ## What you get
 
