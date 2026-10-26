@@ -19,7 +19,7 @@ include { PROFILE } from './subworkflows/profile'
 include { ATTRIBUTION } from './subworkflows/attribution'
 include { AUTHENTICATION } from './subworkflows/authentication'
 include {
-    binScript; isArchive; isOn; metaFromRow; readListFromRow; rejectReservedArgs;
+    binScript; checkSoftware; isArchive; isOn; metaFromRow; readListFromRow; rejectReservedArgs;
     requireDirectory; splitList; taxdumpFile
 } from './subworkflows/utils'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
@@ -28,6 +28,7 @@ include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 workflow {
     // Types, ranges, choices and file existence come from nextflow_schema.json.
     validateParameters()
+    checkSoftware()
     log.info paramsSummaryLog(workflow)
     checkParameters()
 

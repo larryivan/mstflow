@@ -191,6 +191,10 @@ hidden from `--help` unless `--showHidden` is given.
 
 ## Containers
 
+| Option | Description | Type | Default |
+|---|---|---|---|
+| `--check_software` | Check at the start that the software environment chosen with -profile is installed. Docker, Apptainer, Singularity and Conda are looked for on the machine that starts the run. If your compute nodes have one that the login node lacks, set this to false. | boolean | `true` |
+
 <details><summary>Advanced</summary>
 
 | Option | Description | Type | Default |
