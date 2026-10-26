@@ -1,70 +1,45 @@
 # Troubleshooting
 
+Each heading is the message you see; below it is what to do. After a fix, rerun with `-resume`. `.nextflow.log` in the launch directory has the full error, and questions are welcome at <https://github.com/larryivan/mstflow/issues>.
+
+**`-profile … needs Docker, which is not installed` or `No software environment was selected`**
+The tools have nowhere to run from. The message lists Docker, Apptainer, Singularity and Conda with what was found, and the `-profile` to use. If none is installed, install [Miniforge](https://github.com/conda-forge/miniforge) and use `-profile conda`. Docker must be running: open Docker Desktop. If only your compute nodes have the tool, add `--check_software false`.
+
 **`Missing required parameter(s): input`**
-Give the samplesheet with `--input`. To try the workflow without your own data, run
-`nextflow run larryivan/mstflow -profile test,docker`.
+Give the samplesheet with `--input`, or try `-profile test,docker`.
 
 **`Sample '…': fastq_1 '…' was not found`**
-Relative paths are looked up next to the samplesheet first, then in the directory you
-launched from. Use absolute paths if the reads live elsewhere.
+Relative paths are read next to the samplesheet, then from the launch directory. Use absolute paths if the reads are elsewhere.
 
 **`kraken2_db is missing required file: …/hash.k2d`**
-`--kraken2_db` must be the directory that contains `hash.k2d`, `opts.k2d` and
-`taxo.k2d`, or a `.tar.gz` of it; not a parent directory.
+`--kraken2_db` must be the directory holding `hash.k2d`, `opts.k2d` and `taxo.k2d`, or a `.tar.gz` of it, not a parent directory.
 
 **`… does not contain a Kraken2 database`**
-The archive given to `--kraken2_db` holds no `hash.k2d` at its top level or one
-directory down. Check that it is a Kraken2 index and not, for example, a library.
+The archive has no `hash.k2d` at its top level or one directory down. Check that it is a Kraken2 index, not a library.
 
 **`Host FASTA is missing BWA index: ….bwt`**
-Run `bwa index host.fa` and keep the index files next to the FASTA.
+Run `bwa index host.fa` and keep the index beside the FASTA.
 
 **A Kraken2 task fails with exit status 137 or 140**
-It ran out of memory. Raise `--kraken2_memory` to the size of `hash.k2d` plus a few GB.
-MSTFlow already retries once with twice the memory before giving up.
+It ran out of memory. Raise `--kraken2_memory` to the size of `hash.k2d` plus a few GB; MSTFlow already retries once with double.
 
 **Every sample is flagged `few_reads` or `few_genera`**
-The libraries hold little classifiable DNA, which is common for capture libraries and
-poorly preserved material. The tables are still written; interpret them with care. The
-thresholds are `--qc_min_classified_reads` and `--qc_min_taxa`.
+There is little classifiable DNA, as in capture libraries and poorly preserved material. The tables are still written; read them with care. The thresholds are `--qc_min_classified_reads` and `--qc_min_taxa`.
 
 **Docker warns that the image platform does not match the host**
-Expected on Apple Silicon and other ARM machines: the images are `linux/amd64` and run
-under emulation. It works, only more slowly.
+Expected on Apple Silicon: the images are `linux/amd64` and run under emulation, only slower.
 
 **SourceTracker2 assigns nearly every sink to Unknown**
-With few taxa per sink, a small prior on the unknown source lets it absorb sinks that
-clearly match a source. Check that `--sourcetracker2_alpha2` has not been lowered from
-0.1, and compare the cross-validation scores; see
-[source attribution](attribution.md#known-behaviour-of-each-method).
+With few taxa per sink, a small prior lets the unknown source absorb sinks that match a source. Keep `--sourcetracker2_alpha2` at 0.1 and check cross-validation ([details](attribution.md#known-behaviour-of-each-method)).
 
 **`SourcePredict needs at least two source libraries per environment`**
-SourcePredict learns from individual source libraries. Add sources, merge rare
-environments, or leave SourcePredict out of `--attribution_methods`. In
-cross-validation folds an environment left with one library is skipped instead.
-
-**SourceID-NMF cannot download its code**
-Its files are fetched from GitHub when the run starts. Without internet access, clone
-<https://github.com/ZiyiHuang0708/SourceID-NMF> elsewhere, copy it over, and give the
-directory with `--sourceid_nmf_code`.
-
-**`feast and fastst need MSTFlow's attribution container or a build from source`**
-FEAST and FastST are on GitHub, not in Bioconda. They run from MSTFlow's attribution
-image (`-profile docker`, `singularity` or `apptainer`), or, with `-profile conda`, from
-R packages that the workflow builds once at the start of the run. To build them with your
-own R and a C++ compiler instead, set `--r_methods_from_source true`.
-
-**FEAST or FastST cannot be built without internet access**
-The build fetches FEAST and FastST from GitHub and npreg from CRAN. Download the files
-beforehand and give their paths with `--feast_code`, `--fastst_code` and `--npreg_code`.
+Add sources, merge rare environments, or drop SourcePredict from `--attribution_methods`. In cross-validation folds, an environment left with one library is skipped instead.
 
 **`cross-validation needs sources from at least two 'project' groups`**
-Cross-validation holds out one value of `--attribution_cv_group` at a time. Fill the
-`project` column, or name another column that separates your sources into groups.
+Cross-validation holds out one `--attribution_cv_group` value at a time. Fill the `project` column, or name another column that groups your sources.
 
-**Changing an option and rerunning repeats finished steps**
-Add `-resume` so that only the steps affected by the change run again.
+**`feast and fastst need MSTFlow's attribution container or a build from source`**
+They are on GitHub, not in Bioconda. Use `-profile docker`, `singularity` or `apptainer` (the attribution image) or `-profile conda` (built when the run starts). With your own R and a C++ compiler, set `--r_methods_from_source true`.
 
-Anything else: run with `-resume` after fixing the cause, and check `.nextflow.log` in the
-launch directory for the full error. Issues and questions are welcome at
-<https://github.com/larryivan/mstflow/issues>.
+**SourceID-NMF, FEAST or FastST cannot be fetched without internet access**
+Clone <https://github.com/ZiyiHuang0708/SourceID-NMF> and give its directory with `--sourceid_nmf_code`. For FEAST and FastST, download the sources and give them with `--feast_code`, `--fastst_code` and `--npreg_code`.
