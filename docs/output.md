@@ -6,7 +6,8 @@ Everything is written under `--outdir` (default `results/`). Start with these.
 |---|---|
 | `summary/sample_summary.tsv` | One row per sample: fragments after trimming and host removal, host fraction, classified fraction, taxa detected, and flags |
 | `tables/` | Abundance tables across all samples |
-| `attribution/<label>/` | With `--attribution_methods`: every method's estimates, calls and their agreement, and with `--attribution_cv` how often each method was right; see [source attribution](attribution.md#outputs) |
+| `attribution/<label>/` | With `--sources` or `--panel`: every method's estimates, calls and their agreement, and with `--attribution_cv` how often each method was right; see [source attribution](attribution.md#outputs) |
+| `panel/` | With `--sources`: the sources used, as counts and labels, for `--panel` in a later run; see [panels](attribution.md#sources-and-panels) |
 | `authentication/authentication.tsv` | With `--authentication_genomes`: whether the leading taxa of each ancient library show ancient DNA damage; see [authentication](authentication.md#output) |
 | `qc/multiqc/multiqc_report.html` | Every QC metric in one report, including the sample summary |
 
@@ -48,7 +49,7 @@ The files start with the classifier, `kraken2_` or `krakenuniq_`; `G` is the ran
 | `kraken2/` | Kraken2 reports (with and without minimizer data), read-length and confidence statistics |
 | `krakenuniq/` | With `--classifier krakenuniq`: KrakenUniq reports, with unique k-mers per taxon |
 | `qc/fastqc_raw/`, `qc/fastqc_clean/` | FastQC before trimming and after host removal |
-| `pipeline_info/` | Validated samplesheet, Nextflow report, timeline, trace and DAG |
+| `pipeline_info/` | `samplesheet.tsv` (the samples and sources as read, defaults filled in), Nextflow report, timeline, trace and DAG |
 
 Each step that runs a tool also writes a `*.versions.yml` beside its output, recording the version used.
 

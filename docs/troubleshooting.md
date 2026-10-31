@@ -5,11 +5,20 @@ Each heading is the message you see; below it is what to do. After a fix, rerun 
 **`-profile … needs Docker, which is not installed` or `No software environment was selected`**
 The tools have nowhere to run from. The message lists Docker, Apptainer, Singularity and Conda with what was found, and the `-profile` to use. If none is installed, install [Miniforge](https://github.com/conda-forge/miniforge) and use `-profile conda`. Docker must be running: open Docker Desktop. If only your compute nodes have the tool, add `--check_software false`.
 
-**`Missing required parameter(s): input`**
-Give the samplesheet with `--input`, or try `-profile test,docker`.
+**`MSTFlow cannot start:` followed by a list**
+Each line names a sheet, a line in it and what is wrong; fix them all and run again. `nothing to analyse` means neither `--input` nor `--sources` was given; try `-profile test,docker` to see a working run.
 
-**`Sample '…': fastq_1 '…' was not found`**
-Relative paths are read next to the samplesheet, then from the launch directory. Use absolute paths if the reads are elsewhere.
+**`… was not found next to the sheet or in the launch directory`**
+Relative paths are read next to the sheet, then from the launch directory. Use absolute paths if the reads are elsewhere.
+
+**`lists samples to trace, but has source labels`**
+The samples to trace and the sources are now two sheets. Move the rows with `source_sink` = `source` to a sheet given with `--sources`, rename `model_source_env` to `environment` there, and drop both columns from `--input`.
+
+**`The following invalid input values have been detected: * --…`**
+An option is misspelled or does not exist; `--help` lists them all.
+
+**`no sample to trace is deep enough for source attribution: …`**
+Each sample is listed with the check it failed. Samples with too few classified reads cannot be attributed; `inputs/attribution_sample_qc.tsv` has the numbers.
 
 **`kraken2_db is missing required file: …/hash.k2d`**
 `--kraken2_db` must be the directory holding `hash.k2d`, `opts.k2d` and `taxo.k2d`, or a `.tar.gz` of it, not a parent directory.
