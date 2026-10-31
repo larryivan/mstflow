@@ -12,9 +12,20 @@
             "properties": {
                 "input": {
                     "type": "string",
-                    "description": "Samplesheet (TSV) listing every library; a local path or a URL.",
+                    "description": "Samples to trace: a TSV or CSV with one row per library; a local path or a URL.",
                     "format": "path",
-                    "help_text": "Required columns: `sample_id`, `fastq_1`, `age_group` (`ancient` or `modern`). Add `fastq_2` for paired-end libraries. Relative paths are read relative to the samplesheet. See docs/usage.md."
+                    "help_text": "Columns: `sample_id`, `fastq_1`, `fastq_2` (empty for single-end) and `age_group` (`ancient` or `modern`); optional `host_action`, `host_ref`, `host_group`, `unit_id`. Relative paths are read relative to the sheet. See docs/usage.md."
+                },
+                "sources": {
+                    "type": "string",
+                    "description": "Your reference samples: the same columns as --input, plus `environment` and `project`.",
+                    "format": "path",
+                    "help_text": "Every row is a source of known environment (`oral`, `gut`, `soil` ...); `project` names the study, which cross-validation holds out as a whole. The sources used are written to results/panel, for reuse with --panel."
+                },
+                "panel": {
+                    "type": "string",
+                    "description": "Sources of an earlier run: its results/panel directory (counts.tsv and sources.tsv), or a URL to one.",
+                    "help_text": "The panel's sources join those of --sources without being classified again. A panel is valid only with the database and settings of the run that made it."
                 },
                 "outdir": {
                     "type": "string",
@@ -33,10 +44,7 @@
                     "default": "mstflow",
                     "pattern": "^[^'\\n\\r]*$"
                 }
-            },
-            "required": [
-                "input"
-            ]
+            }
         },
         "host_removal_options": {
             "title": "Host removal",
@@ -354,8 +362,8 @@
             "properties": {
                 "attribution_methods": {
                     "type": "string",
-                    "description": "Methods to run, comma-separated; empty runs none.",
-                    "default": "",
+                    "description": "Methods to run when --sources or --panel is given, comma-separated: sourcetracker2, feast, fastst, sourceid_nmf, sourcepredict.",
+                    "default": "sourcetracker2",
                     "pattern": "^((sourcetracker2|feast|fastst|sourceid_nmf|sourcepredict)(,(sourcetracker2|feast|fastst|sourceid_nmf|sourcepredict))*)?$",
                     "help_text": "`sourcetracker2`, `feast`, `fastst` (experimental), `sourceid_nmf` and `sourcepredict`. All read the same table, so their results can be compared; see docs/attribution.md."
                 },

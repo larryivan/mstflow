@@ -1,27 +1,26 @@
 #!/usr/bin/env nextflow
 
 /*
- * MSTFlow: metagenomic profiling of ancient and modern DNA together, followed by
- * optional source attribution with several methods.
+ * MSTFlow: metagenomic profiling of ancient and modern DNA together, and source
+ * attribution of the samples against reference sources.
  *
- *   samplesheet -> PREPROCESS -> PROFILE ----> ATTRIBUTION
- *                  trimming,     Kraken2 or     SourceTracker2, FEAST, FastST,
- *                  host removal  KrakenUniq     SourceID-NMF, SourcePredict
- *                                       \-> AUTHENTICATION
- *                                           Bowtie2 and PyDamage
+ *   --input, --sources -> PREPROCESS -> PROFILE ----> ATTRIBUTION <- --panel
+ *                         trimming,     Kraken2 or     SourceTracker2 by default;
+ *                         host removal  KrakenUniq     FEAST, FastST, SourceID-NMF,
+ *                                              \       SourcePredict on request
+ *                                               \-> AUTHENTICATION
+ *                                                   Bowtie2 and PyDamage
  */
 
-include { VALIDATE_METADATA } from './modules/validate_metadata'
+include { WRITE_SAMPLESHEET } from './modules/write_samplesheet'
 include { SUMMARIZE_SAMPLES } from './modules/summarize_samples'
 include { MULTIQC_REPORT } from './modules/multiqc'
 include { PREPROCESS } from './subworkflows/preprocess'
 include { PROFILE } from './subworkflows/profile'
 include { ATTRIBUTION } from './subworkflows/attribution'
 include { AUTHENTICATION } from './subworkflows/authentication'
-include {
-    binScript; isArchive; isOn; metaFromRow; readListFromRow; rejectReservedArgs;
-    requireDirectory; splitList; taxdumpFile
-} from './subworkflows/utils'
+include { describeInputs; librariesText; metaFromLibrary; readInputs; samplesheetText } from './subworkflows/inputs'
+include { binScript; isArchive; isOn; rejectReservedArgs; requireDirectory; splitList; taxdumpFile } from './subworkflows/utils'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
 
@@ -31,21 +30,25 @@ workflow {
     log.info paramsSummaryLog(workflow)
     checkParameters()
 
-    def methods = splitList(params.attribution_methods)
+    // Sources from --sources or --panel turn source attribution on.
+    def attribute = isOn(params.run_kraken2) && (params.sources || params.panel)
+    def inputs = readInputs()
+    log.info describeInputs(inputs, attribute)
 
-    def samplesheet = file(params.input, checkIfExists: true)
-    if (samplesheet instanceof List) {
-        error "The input parameter must identify exactly one samplesheet; matched ${samplesheet.size()} files"
+    // The processing steps read the libraries without their labels, so changing a label
+    // reruns source attribution only.
+    WRITE_SAMPLESHEET(channel.of(
+        ['libraries.tsv', librariesText(inputs.libraries)],
+        ['samplesheet.tsv', samplesheetText(inputs.libraries)]
+    ))
+    sheets = WRITE_SAMPLESHEET.out.branch { name, _table ->
+        libraries: name == 'libraries.tsv'
+        labelled: true
     }
-    VALIDATE_METADATA(samplesheet, binScript('validate_metadata.py'))
-    metadata = VALIDATE_METADATA.out.metadata
+    libraries = sheets.libraries.map { _name, table -> table }.first()
+    samplesheet = sheets.labelled.map { _name, table -> table }.first()
 
-    // The validator runs in a container and treats paths as text; existence is
-    // checked here, against the samplesheet's own directory first.
-    samples = metadata
-        .splitCsv(header: true, sep: '\t')
-        .map { row -> tuple(metaFromRow(row), readListFromRow(row, samplesheet.parent)) }
-
+    samples = channel.fromList(inputs.libraries.collect { library -> tuple(metaFromLibrary(library), library.reads) })
     PREPROCESS(samples)
     qc_files = PREPROCESS.out.qc
 
@@ -53,12 +56,12 @@ workflow {
         def taxdumpNodes = params.taxon_filter == 'prokaryote'
             ? taxdumpFile(params.taxdump, 'nodes.dmp', 'taxon_filter=prokaryote')
             : []
-        PROFILE(PREPROCESS.out.reads, metadata, channel.value(resolveDatabase()), channel.value(taxdumpNodes))
+        PROFILE(PREPROCESS.out.reads, libraries, channel.value(resolveDatabase()), channel.value(taxdumpNodes))
         qc_files = qc_files.mix(PROFILE.out.qc)
 
         // One row per sample: fragments kept by each step, and depth flags.
         SUMMARIZE_SAMPLES(
-            metadata,
+            libraries,
             PROFILE.out.sample_qc,
             PROFILE.out.filtered_counts,
             PREPROCESS.out.step_counts.toSortedList { a, b -> a.name <=> b.name },
@@ -67,14 +70,15 @@ workflow {
         qc_files = qc_files.mix(SUMMARIZE_SAMPLES.out.multiqc)
 
         if (params.authentication_genomes) {
-            AUTHENTICATION(PREPROCESS.out.reads, PROFILE.out.filtered_counts, metadata)
+            AUTHENTICATION(PREPROCESS.out.reads, PROFILE.out.filtered_counts, libraries)
         }
 
-        if (methods) {
+        if (attribute) {
             ATTRIBUTION(
                 params.attribution_taxon_scope == 'all' ? PROFILE.out.all_counts : PROFILE.out.filtered_counts,
-                metadata,
-                PROFILE.out.sample_qc
+                samplesheet,
+                PROFILE.out.sample_qc,
+                inputs.panel ? [inputs.panel.counts, inputs.panel.sources] : []
             )
         }
     }
@@ -92,6 +96,7 @@ workflow {
         Summary: 'summary/sample_summary.tsv',
         Tables: 'tables/',
         Attribution: "attribution/${params.attribution_label}/",
+        Panel: 'panel/',
         Authentication: 'authentication/authentication.tsv',
         Report: 'qc/multiqc/multiqc_report.html',
     ].collect { name, path -> ["  ${name.padRight(15)} ${params.outdir}/${path}".toString(), file("${params.outdir}/${path}")] }
@@ -151,15 +156,19 @@ def checkParameters() {
     if ((params.kraken2_min_distinct_minimizers as int) > 0 && !isOn(params.kraken2_report_minimizer_data)) {
         error 'kraken2_min_distinct_minimizers needs kraken2_report_minimizer_data = true'
     }
-    def methods = splitList(params.attribution_methods)
-    if ((methods || params.authentication_genomes) && !isOn(params.run_kraken2)) {
+    def references = params.sources || params.panel
+    if ((references || params.authentication_genomes) && !isOn(params.run_kraken2)) {
         error 'Source attribution and authentication need the count table, so classification must run (run_kraken2)'
     }
+    def methods = references ? splitList(params.attribution_methods) : []
     // FEAST and FastST come from GitHub: they are in the attribution image, or built from
     // source when r_methods_from_source is on, as it is for -profile conda.
     def fromGithub = methods.intersect(['feast', 'fastst'])
     if (fromGithub && !workflow.containerEngine && !isOn(params.r_methods_from_source) && !workflow.stubRun) {
         error "${fromGithub.join(' and ')} need MSTFlow's attribution container or a build from source; use -profile docker, singularity, apptainer or conda"
+    }
+    if (isOn(params.attribution_cv) && !references) {
+        error 'attribution_cv scores the methods on your sources, so it needs --sources or --panel'
     }
     if (isOn(params.attribution_cv) && !methods) {
         error 'attribution_cv needs at least one method in attribution_methods'

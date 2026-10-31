@@ -44,51 +44,6 @@ def isLocal(path) {
 }
 
 
-def resolveReadPath(sampleId, column, value, sheetDir) {
-    // Relative paths are read relative to the samplesheet, so a sheet and its
-    // reads can move together. Paths relative to the launch directory are still
-    // accepted for older sheets; URLs and absolute paths are used as given.
-    def text = value.toString().trim()
-    if (text ==~ /^[A-Za-z][A-Za-z0-9+.-]*:\/\/.+/ || java.nio.file.Paths.get(text).isAbsolute()) {
-        return file(text, checkIfExists: true)
-    }
-    def besideSheet = sheetDir.resolve(text)
-    if (besideSheet.exists()) {
-        return besideSheet
-    }
-    def fromLaunchDir = file(text)
-    if (fromLaunchDir.exists()) {
-        return fromLaunchDir
-    }
-    throw new IllegalArgumentException(
-        "Sample '${sampleId}': ${column} '${text}' was not found. Relative paths are " +
-        "looked up next to the samplesheet (${besideSheet}) and then in the launch " +
-        "directory (${fromLaunchDir})."
-    )
-}
-
-
-def readListFromRow(row, sheetDir) {
-    def read1 = resolveReadPath(row.sample_id, 'fastq_1', row.fastq_1, sheetDir)
-    def fastq2 = row.fastq_2.toString()
-    if (fastq2 == 'NA' || fastq2 == '') {
-        return [read1]
-    }
-    return [read1, resolveReadPath(row.sample_id, 'fastq_2', fastq2, sheetDir)]
-}
-
-
-def metaFromRow(row) {
-    def meta = row.collectEntries { key, value ->
-        [(key.toString()): value == null ? '' : value.toString()]
-    }
-    meta.id = meta.sample_id
-    meta.layout = meta.layout.toUpperCase()
-    meta.age_group = meta.age_group.toLowerCase()
-    return meta
-}
-
-
 def requireDirectory(name, value, requiredFiles, hint) {
     if (!value) {
         throw new IllegalArgumentException("Parameter '${name}' is required")

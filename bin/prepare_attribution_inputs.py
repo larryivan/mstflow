@@ -3,7 +3,11 @@
 
 Writes the count table and map that every attribution method reads (see
 mstflow_attribution.py), and records for every input sample whether it was used and,
-if not, why.
+if not, why. The sources of a panel from an earlier run join this run's sources, and
+all the sources used are written as a panel for the next run:
+
+  counts.tsv    ``#OTU ID`` and one column of counts per source
+  sources.tsv   source_id, environment, project, libraries (the runs merged into it)
 """
 import argparse
 import csv
@@ -28,9 +32,11 @@ QC_FIELDS = [
     "required_min_count",
     "aggregation_n",
     "aggregation_members",
+    "origin",
     "included",
     "exclusion_reason",
 ]
+PANEL_FIELDS = ["source_id", "environment", "project", "libraries"]
 
 
 def norm(value):
@@ -142,6 +148,33 @@ def read_feature_sample_qc(path):
     return by_sample
 
 
+def read_panel(counts_path, sources_path):
+    """The sources of a panel: their labels, by source, and their counts."""
+    with open(sources_path, newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        missing = [field for field in ("source_id", "environment") if field not in (reader.fieldnames or [])]
+        if missing:
+            raise SystemExit(f"panel sources.tsv is missing column(s): {', '.join(missing)}")
+        rows = list(reader)
+    sources = OrderedDict()
+    for line_no, row in enumerate(rows, start=2):
+        source = norm(row.get("source_id"))
+        environment = norm(row.get("environment")).lower()
+        if not source or is_na(environment):
+            raise SystemExit(f"panel sources.tsv:{line_no}: source_id and environment must not be empty")
+        if source in sources:
+            raise SystemExit(f"panel sources.tsv:{line_no}: duplicate source_id '{source}'")
+        sources[source] = {
+            "environment": environment,
+            "project": first_present(row, "project") or "NA",
+            "libraries": first_present(row, "libraries") or source,
+        }
+    columns, features, matrix = read_counts(counts_path)
+    if set(columns) != set(sources):
+        raise SystemExit("the panel's counts.tsv and sources.tsv list different sources")
+    return sources, features, matrix
+
+
 def complete_sum(rows, field):
     """The sum of an integer QC field over the runs of a unit, or None if any run lacks it."""
     values = [norm(row.get(field)) for row in rows]
@@ -231,6 +264,14 @@ def collapse_values(rows, field):
     return ";".join(values) or "NA"
 
 
+def excluded_list(units, groups, reasons):
+    """The units left out, with why: a unit of this run by its first sample, a panel source by itself."""
+    return "".join(
+        f"{', ' if index else ': '}{unit} ({reasons[groups[unit][0]] if unit in groups else reasons[unit]})"
+        for index, unit in enumerate(units)
+    )
+
+
 def format_number(value, count=False):
     """NA for an undefined value, such as a fraction of zero reads; counts exactly."""
     if value is None:
@@ -256,7 +297,14 @@ def main():
     parser.add_argument("--min-kraken-classified-fraction", type=float, default=0.001)
     parser.add_argument("--min-taxon-filter-retained-reads", type=float, default=1000.0)
     parser.add_argument("--min-taxon-filter-retained-fraction", type=float, default=0.001)
+    parser.add_argument("--panel-counts", help="counts.tsv of a panel whose sources join this run's")
+    parser.add_argument("--panel-sources", help="sources.tsv of that panel")
+    parser.add_argument("--no-sinks", action="store_true",
+                        help="The run has only sources: prepare them for cross-validation and the panel.")
+    parser.add_argument("--write-panel", help="Directory to write the sources used as a panel")
     args = parser.parse_args()
+    if bool(args.panel_counts) != bool(args.panel_sources):
+        raise SystemExit("--panel-counts and --panel-sources go together")
 
     metadata_fields, metadata = read_metadata(args.metadata)
     samples, features, matrix = read_counts(args.counts)
@@ -287,17 +335,16 @@ def main():
         group_feature_qc[group_id] = aggregate_feature_qc(members, feature_qc)
         total = sum(input_totals[sample] for sample in members)
         role = group_metadata[group_id]["source_sink"]
-        required_depth = args.min_source_count if role == "source" else args.min_sink_count
         if role not in ("source", "sink"):
-            group_reason = "source_sink_not_selected"
-        else:
-            group_reason = quality_exclusion_reason(
-                group_feature_qc[group_id],
-                args.taxon_scope,
-                args.min_kraken_classified_fraction,
-                args.min_taxon_filter_retained_reads,
-                args.min_taxon_filter_retained_fraction,
-            )
+            raise SystemExit(f"sample '{members[0]}' is neither source nor sink in the samplesheet")
+        required_depth = args.min_source_count if role == "source" else args.min_sink_count
+        group_reason = quality_exclusion_reason(
+            group_feature_qc[group_id],
+            args.taxon_scope,
+            args.min_kraken_classified_fraction,
+            args.min_taxon_filter_retained_reads,
+            args.min_taxon_filter_retained_fraction,
+        )
         if not group_reason and total <= 0:
             group_reason = "zero_total_count"
         elif not group_reason and total < required_depth:
@@ -308,8 +355,37 @@ def main():
         else:
             final_groups.append(group_id)
 
-    if not final_groups:
-        raise SystemExit("no samples remain for source attribution after role, exclusion, and depth QC")
+    aggregated = {}
+    for feature in features:
+        aggregated[feature] = {
+            group: sum(matrix[feature][sample] for sample in groups[group])
+            for group in final_groups
+        }
+
+    # A panel's sources were checked when the panel was made; only the depth the methods
+    # need now is checked again.
+    panel_sources = OrderedDict()
+    if args.panel_counts:
+        panel_sources, panel_features, panel_matrix = read_panel(args.panel_counts, args.panel_sources)
+        clashes = [source for source in panel_sources if source in groups]
+        if clashes:
+            raise SystemExit(f"the panel has source(s) named like samples of this run: {', '.join(clashes)}")
+        for source, labels in panel_sources.items():
+            total = sum(panel_matrix[feature][source] for feature in panel_features)
+            if total < max(args.min_source_count, 1):
+                reasons[source] = "zero_total_count" if total <= 0 else f"below_min_source_count:{args.min_source_count}"
+                continue
+            final_groups.append(source)
+            group_metadata[source] = {
+                field: "NA" for field in metadata_fields
+            }
+            group_metadata[source].update({
+                "sample_id": source, args.aggregate_by: source, "unit_id": source, "source_sink": "source",
+                "model_source_env": labels["environment"], "project": labels["project"],
+            })
+            for feature in panel_features:
+                aggregated.setdefault(feature, {})[source] = panel_matrix[feature][source]
+
     source_groups = [
         group for group in final_groups if group_metadata[group]["source_sink"] == "source"
     ]
@@ -317,9 +393,13 @@ def main():
         group for group in final_groups if group_metadata[group]["source_sink"] == "sink"
     ]
     if not source_groups:
-        raise SystemExit("source attribution needs at least one source after exclusions and depth QC")
-    if not sink_groups:
-        raise SystemExit("source attribution needs at least one sink after exclusions and depth QC")
+        excluded = [unit for unit in [*groups, *panel_sources]
+                    if unit in panel_sources or group_metadata[unit]["source_sink"] == "source"]
+        raise SystemExit("no source is deep enough for source attribution" + excluded_list(excluded, groups, reasons))
+    if not sink_groups and not args.no_sinks:
+        excluded = [group for group in groups if group_metadata[group]["source_sink"] == "sink"]
+        raise SystemExit("no sample to trace is deep enough for source attribution"
+                         + excluded_list(excluded, groups, reasons))
     reserved_source_envs = [
         group_metadata[group]["model_source_env"]
         for group in source_groups
@@ -331,22 +411,17 @@ def main():
             "Unknown or SampleID; found: " + ", ".join(sorted(set(reserved_source_envs)))
         )
 
-    aggregated = {}
-    for feature in features:
-        aggregated[feature] = {
-            group: sum(matrix[feature][sample] for sample in groups[group])
-            for group in final_groups
-        }
-
-    retained_features = [
+    # Sorted as the count table is, so a run with a panel reads the same table as the run
+    # that made the panel would have.
+    retained_features = sorted(
         feature
-        for feature in features
-        if any(aggregated[feature][group] > 0 for group in final_groups)
-    ]
+        for feature in aggregated
+        if any(aggregated[feature].get(group, 0) > 0 for group in final_groups)
+    )
     if not retained_features:
         raise SystemExit("no nonzero features remain for source attribution")
     analysis_group_totals = {
-        group: sum(aggregated[feature][group] for feature in retained_features)
+        group: sum(aggregated[feature].get(group, 0) for feature in retained_features)
         for group in final_groups
     }
 
@@ -354,7 +429,25 @@ def main():
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["#OTU ID", *final_groups])
         for feature in retained_features:
-            writer.writerow([feature, *[aggregated[feature][group] for group in final_groups]])
+            writer.writerow([feature, *[aggregated[feature].get(group, 0) for group in final_groups]])
+
+    if args.write_panel:
+        panel_features = [
+            feature for feature in retained_features
+            if any(aggregated[feature].get(group, 0) > 0 for group in source_groups)
+        ]
+        with open(f"{args.write_panel}/counts.tsv", "w", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(["#OTU ID", *source_groups])
+            for feature in panel_features:
+                writer.writerow([feature, *[aggregated[feature].get(group, 0) for group in source_groups]])
+        with open(f"{args.write_panel}/sources.tsv", "w", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(PANEL_FIELDS)
+            for group in source_groups:
+                row = group_metadata[group]
+                libraries = panel_sources[group]["libraries"] if group in panel_sources else ",".join(groups[group])
+                writer.writerow([group, row["model_source_env"], row["project"], libraries])
 
     reserved_mapping_fields = {
         "#SampleID",
@@ -382,12 +475,13 @@ def main():
         writer.writeheader()
         for group in final_groups:
             row = group_metadata[group]
+            members = panel_sources[group]["libraries"].split(",") if group in panel_sources else groups[group]
             output = {
                 "#SampleID": group,
                 "SourceSink": row["source_sink"],
                 "Env": row["model_source_env"],
-                "aggregation_n": len(groups[group]),
-                "aggregation_members": ",".join(groups[group]),
+                "aggregation_n": len(members),
+                "aggregation_members": ",".join(members),
             }
             output.update({field: row[field] for field in mapping_extras})
             writer.writerow(output)
@@ -414,18 +508,38 @@ def main():
                 "required_min_count": {"source": args.min_source_count, "sink": args.min_sink_count}.get(role, 0),
                 "aggregation_n": len(members),
                 "aggregation_members": ",".join(members),
+                "origin": "samplesheet",
                 "included": str(group in final_groups).lower(),
                 "exclusion_reason": reasons.get(sample, "NA"),
+            })
+        for source, labels in panel_sources.items():
+            total = analysis_group_totals.get(source)
+            members = labels["libraries"].split(",")
+            writer.writerow({
+                **{field: "NA" for field in QC_FIELDS},
+                "input_sample_id": source,
+                "analysis_sample_id": source,
+                "unit_id": source,
+                "source_sink": "source",
+                "model_source_env": labels["environment"],
+                "analysis_total_count": format_number(total, count=True),
+                "required_min_count": args.min_source_count,
+                "aggregation_n": len(members),
+                "aggregation_members": ",".join(members),
+                "origin": "panel",
+                "included": str(source in final_groups).lower(),
+                "exclusion_reason": reasons.get(source, "NA"),
             })
 
     with open(args.summary, "w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["metric", "value"])
         writer.writerow(["input_samples", len(samples)])
+        writer.writerow(["panel_sources", len(panel_sources)])
         writer.writerow(["candidate_analysis_units", len(groups)])
         writer.writerow(["kept_analysis_units", len(final_groups)])
-        writer.writerow(["kept_input_samples", sum(len(groups[group]) for group in final_groups)])
-        writer.writerow(["excluded_input_samples", len(reasons)])
+        writer.writerow(["kept_input_samples", sum(len(groups[group]) for group in final_groups if group in groups)])
+        writer.writerow(["excluded_input_samples", sum(sample in reasons for sample in samples)])
         writer.writerow(["source_analysis_units", len(source_groups)])
         writer.writerow(["sink_analysis_units", len(sink_groups)])
         writer.writerow(["kept_analysis_unit_ids", ",".join(final_groups)])

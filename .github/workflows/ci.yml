@@ -76,3 +76,13 @@ jobs:
           grep -q "^calculus.*Arachnia.*damaged$" results/authentication/authentication.tsv
           # The mixtures' estimates follow from their components'.
           python3 assets/test/check_mixtures.py results
+          # The eleven sources are saved as a panel.
+          test "$(tail -n +2 results/panel/sources.tsv | wc -l)" -eq 11
+      # The samples again, against that panel instead of the sources' reads. Only source
+      # attribution runs again, on the same table, so it gives the same results.
+      - name: Reuse the panel
+        run: |
+          printf 'sources: null\npanel: results/panel\noutdir: results_panel\n' > panel.yml
+          nextflow run ${{ github.workspace }} -profile test,${{ matrix.profile }} -params-file panel.yml -resume
+          cmp results/attribution/default/inputs/attribution_counts.tsv results_panel/attribution/default/inputs/attribution_counts.tsv
+          cmp results/attribution/default/proportions.tsv results_panel/attribution/default/proportions.tsv

@@ -1,20 +1,25 @@
 include { splitList } from '../subworkflows/utils'
 
 /*
- * Choose the analysis units for source attribution: drop rows that are neither
- * source nor sink and units too shallow to use, merge runs of one biological sample,
- * and write the count table and map that every method reads.
+ * Choose the analysis units for source attribution: merge runs of one biological
+ * sample, drop units too shallow to use, add the sources of a panel, and write the count
+ * table and map that every method reads. The sources used are also written as a panel,
+ * published to results/panel when they include --sources.
  */
 process PREPARE_ATTRIBUTION_INPUTS {
     label 'process_low'
     tag "${params.attribution_label}"
     container "${params.container_python_tools}"
-    publishDir "${params.outdir}/attribution/${params.attribution_label}/inputs", mode: 'copy'
+    publishDir "${params.outdir}/attribution/${params.attribution_label}/inputs", mode: 'copy',
+        saveAs: { filename -> filename.startsWith('panel/') ? null : filename }
+    publishDir "${params.outdir}", mode: 'copy', enabled: params.sources as boolean,
+        saveAs: { filename -> filename.startsWith('panel/') ? filename : null }
 
     input:
     path counts
-    path metadata
+    path samplesheet
     path feature_sample_qc
+    path panel, stageAs: 'given_panel/*'
     path prepare_script
 
     output:
@@ -22,6 +27,7 @@ process PREPARE_ATTRIBUTION_INPUTS {
     path "attribution_map.tsv", emit: map
     path "attribution_input_summary.tsv", emit: summary
     path "attribution_sample_qc.tsv", emit: sample_qc
+    path "panel/*", emit: panel
     path "prepare_attribution_inputs_versions.yml", emit: versions
 
     script:
@@ -30,10 +36,13 @@ process PREPARE_ATTRIBUTION_INPUTS {
     def withSourceTracker = 'sourcetracker2' in splitList(params.attribution_methods)
     def minSource = withSourceTracker ? params.sourcetracker2_source_rarefaction_depth : 0
     def minSink = withSourceTracker ? params.sourcetracker2_sink_rarefaction_depth : 0
+    def panelArgs = panel ? '--panel-counts given_panel/counts.tsv --panel-sources given_panel/sources.tsv' : ''
+    def samplesArgs = params.input ? '' : '--no-sinks'
     """
+    mkdir -p panel
     python3 ${prepare_script} \\
         --counts ${counts} \\
-        --metadata ${metadata} \\
+        --metadata ${samplesheet} \\
         --feature-sample-qc ${feature_sample_qc} \\
         --output-counts attribution_counts.tsv \\
         --output-map attribution_map.tsv \\
@@ -45,7 +54,9 @@ process PREPARE_ATTRIBUTION_INPUTS {
         --min-sink-count ${minSink} \\
         --min-kraken-classified-fraction ${params.attribution_min_classified_fraction} \\
         --min-taxon-filter-retained-reads ${params.attribution_min_retained_reads} \\
-        --min-taxon-filter-retained-fraction ${params.attribution_min_retained_fraction}
+        --min-taxon-filter-retained-fraction ${params.attribution_min_retained_fraction} \\
+        --write-panel panel \\
+        ${panelArgs} ${samplesArgs}
 
     printf '"${task.process}":\\n    python: "%s"\\n' "\$(python3 --version 2>&1 | sed 's/Python //')" > prepare_attribution_inputs_versions.yml
     """
