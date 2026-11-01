@@ -19,6 +19,10 @@ include { PREPROCESS } from './subworkflows/preprocess'
 include { PROFILE } from './subworkflows/profile'
 include { ATTRIBUTION } from './subworkflows/attribution'
 include { AUTHENTICATION } from './subworkflows/authentication'
+include { describeInputs; librariesText; metaFromLibrary; readInputs; samplesheetText } from './subworkflows/inputs'
+include {
+    binScript; checkSoftware; isArchive; isOn; rejectReservedArgs; requireDirectory; splitList; taxdumpFile
+} from './subworkflows/utils'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
 
