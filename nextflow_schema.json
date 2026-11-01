@@ -644,6 +644,12 @@
             "type": "object",
             "fa_icon": "fab fa-docker",
             "properties": {
+                "check_software": {
+                    "type": "boolean",
+                    "description": "Check at the start that the software environment chosen with -profile is installed.",
+                    "default": true,
+                    "help_text": "Docker, Apptainer, Singularity and Conda are looked for on the machine that starts the run. If your compute nodes have one that the login node lacks, set this to false."
+                },
                 "container_fastqc": {
                     "type": "string",
                     "description": "Container image for FastQC.",
