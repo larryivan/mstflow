@@ -26,8 +26,11 @@ def references(root):
     reads.mkdir()
     for name in ("a_1.fq.gz", "a_2.fq.gz", "b.fq.gz", "c.fq.gz"):
         (reads / name).write_text("")
+    # Stub tasks need almost nothing, and the default requests can exceed a small runner.
+    resources = root / "resources.config"
+    resources.write_text("process.resourceLimits = [cpus: 2, memory: '2 GB', time: '1h']\n")
     # The sheets are read whatever software is installed, so that check is not tested here.
-    return ["--kraken2_db", database, "--host_fasta", host, "--check_software", "false"]
+    return ["-c", resources, "--kraken2_db", database, "--host_fasta", host, "--check_software", "false"]
 
 
 def nextflow(root, *arguments):
