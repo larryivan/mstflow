@@ -19,14 +19,13 @@ include { PREPROCESS } from './subworkflows/preprocess'
 include { PROFILE } from './subworkflows/profile'
 include { ATTRIBUTION } from './subworkflows/attribution'
 include { AUTHENTICATION } from './subworkflows/authentication'
-include { describeInputs; librariesText; metaFromLibrary; readInputs; samplesheetText } from './subworkflows/inputs'
-include { binScript; isArchive; isOn; rejectReservedArgs; requireDirectory; splitList; taxdumpFile } from './subworkflows/utils'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
 
 workflow {
     // Types, ranges, choices and file existence come from nextflow_schema.json.
     validateParameters()
+    checkSoftware()
     log.info paramsSummaryLog(workflow)
     checkParameters()
 
