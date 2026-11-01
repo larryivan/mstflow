@@ -8,7 +8,9 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--input` | Samplesheet (TSV) listing every library; a local path or a URL. Required columns: `sample_id`, `fastq_1`, `age_group` (`ancient` or `modern`). Add `fastq_2` for paired-end libraries. Relative paths are read relative to the samplesheet. See docs/usage.md. | string | required |
+| `--input` | Samples to trace: a TSV or CSV with one row per library; a local path or a URL. Columns: `sample_id`, `fastq_1`, `fastq_2` (empty for single-end) and `age_group` (`ancient` or `modern`); optional `host_action`, `host_ref`, `host_group`, `unit_id`. Relative paths are read relative to the sheet. See docs/usage.md. | string |  |
+| `--sources` | Your reference samples: the same columns as --input, plus `environment` and `project`. Every row is a source of known environment (`oral`, `gut`, `soil` ...); `project` names the study, which cross-validation holds out as a whole. The sources used are written to results/panel, for reuse with --panel. | string |  |
+| `--panel` | Sources of an earlier run: its results/panel directory (counts.tsv and sources.tsv), or a URL to one. The panel's sources join those of --sources without being classified again. A panel is valid only with the database and settings of the run that made it. | string |  |
 | `--outdir` | Directory for results. | string | `results` |
 | `--publish_intermediates` | Also copy large intermediate FASTQ files to the results directory. | boolean | `false` |
 | `--multiqc_title` | Title shown on the MultiQC report. | string | `mstflow` |
@@ -111,7 +113,7 @@ hidden from `--help` unless `--showHidden` is given.
 
 | Option | Description | Type | Default |
 |---|---|---|---|
-| `--attribution_methods` | Methods to run, comma-separated; empty runs none. `sourcetracker2`, `feast`, `fastst` (experimental), `sourceid_nmf` and `sourcepredict`. All read the same table, so their results can be compared; see docs/attribution.md. | string |  |
+| `--attribution_methods` | Methods to run when --sources or --panel is given, comma-separated: sourcetracker2, feast, fastst, sourceid_nmf, sourcepredict. `sourcetracker2`, `feast`, `fastst` (experimental), `sourceid_nmf` and `sourcepredict`. All read the same table, so their results can be compared; see docs/attribution.md. | string | `sourcetracker2` |
 | `--attribution_label` | Name of this analysis; results go to `attribution/<label>/`. | string | `default` |
 | `--attribution_aggregate_by` | Unit each method models: each library, or all runs sharing a `unit_id`. | `sample_id` / `unit_id` | `unit_id` |
 | `--attribution_taxon_scope` | Taxa given to the methods: after the taxon filter, or all. | `filtered` / `all` | `filtered` |

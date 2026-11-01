@@ -4,18 +4,23 @@ Source attribution estimates where a sample's microbes came from: how much of an
 
 MSTFlow runs five published methods on the same count table, lines up their results and scores each on your own sources. The methods often disagree, more on real data than in their papers, so agreement between them, and accuracy on held-out sources, are part of the result.
 
-## Samplesheet
+## Sources and panels
 
-| Column | Meaning |
+Sources come from `--sources`, a sheet of reference libraries (see [usage](usage.md#samples-and-sources)), from `--panel`, the sources of an earlier run, or from both. Attribution runs whenever there are sources.
+
+| Column of `--sources` | Meaning |
 |---|---|
-| `source_sink` | `source` or `sink`; empty leaves the library out of attribution |
-| `model_source_env` | For sources, the environment: `oral`, `gut`, `soil`, `laboratory` ... |
-| `project` | The study a library comes from; cross-validation holds out one study at a time |
+| `environment` | The environment: `oral`, `gut`, `soil`, `laboratory` ... |
+| `project` | The study; cross-validation holds out one study at a time |
 | `unit_id` | Optional: runs of one biological sample, merged into one unit |
 
 Sources of one environment are pooled, so each environment needs at least one source that passes the depth checks. SourcePredict learns from each source on its own and needs at least two per environment, and many more to work well.
 
+Every run with `--sources` writes the sources it used to `results/panel/`: `counts.tsv`, one column of counts per source, and `sources.tsv`, with `source_id`, `environment`, `project` and the `libraries` merged into each. `--panel results/panel` adds them to a later run as they are, without classifying their reads again. Their counts are only comparable with counts from the same database and settings, so a panel is valid only with the run that made it; `results/pipeline_info` records those.
+
 ## Methods
+
+SourceTracker2 runs by default. The others are added with
 
 ```bash
 --attribution_methods sourcetracker2,feast,fastst,sourceid_nmf,sourcepredict
@@ -84,7 +89,7 @@ In `attribution/<label>/` (`--attribution_label`, default `default`):
 
 | Path | Contents |
 |---|---|
-| `inputs/` | the table and map every method read; `attribution_sample_qc.tsv` says which samples were left out and why |
+| `inputs/` | the table and map every method read; `attribution_sample_qc.tsv` says which samples and sources were left out and why, and which sources came from a panel (`origin`) |
 | `<method>/` | each method's results in the shared format |
 | `proportions.tsv` | every estimate: method, sink, source, estimate, uncertainty, quantity |
 | `assignments.tsv` | per method and sink: the call, the leading sources, the unknown share |

@@ -4,7 +4,8 @@
 
 ```bash
 nextflow run larryivan/mstflow -r 0.1.0 -profile docker \
-    --input samplesheet.tsv \
+    --input samples.tsv \
+    --sources sources.tsv \
     --kraken2_db k2_standard/ \
     --host_fasta chm13v2.0.fa \
     --outdir results
@@ -14,33 +15,39 @@ nextflow run larryivan/mstflow -r 0.1.0 -profile docker \
 - `-r 0.1.0` pins a release, `-resume` continues an interrupted run, and `-params-file params.yml` keeps options in a file ([example](../examples/params.example.yml)).
 - `--help` lists every option; [parameters](parameters.md) has the full table.
 
-## Samplesheet
+## Samples and sources
 
-A tab-separated file with one row per library:
+Two sheets, tab- or comma-separated, with one row per library. `--input` lists the samples to trace; `--sources` lists the reference samples, with the environment each comes from. The file decides the role, so neither sheet has a role column.
 
 | sample_id | fastq_1 | fastq_2 | age_group |
 |---|---|---|---|
 | bone_01 | reads/bone_01_R1.fastq.gz | reads/bone_01_R2.fastq.gz | ancient |
 | bone_02 | reads/bone_02.fastq.gz | | ancient |
-| gut_01 | reads/gut_01_R1.fastq.gz | reads/gut_01_R2.fastq.gz | modern |
 
-The [test samplesheet](https://github.com/larryivan/mstflow/releases/download/test-data-v1/samplesheet.tsv) is a working example with the attribution columns.
+| sample_id | fastq_1 | fastq_2 | age_group | environment | project |
+|---|---|---|---|---|---|
+| gut_01 | reads/gut_01_R1.fastq.gz | reads/gut_01_R2.fastq.gz | modern | gut | study_A |
+| soil_01 | reads/soil_01.fastq.gz | | modern | soil | study_B |
+
+The test profile's [samples.tsv](../assets/test/samples.tsv) and [sources.tsv](../assets/test/sources.tsv) are working examples.
 
 | Column | Required | Meaning |
 |---|---|---|
-| `sample_id` | yes | Unique name: letters, digits, `.`, `_`, `-` |
+| `sample_id` | yes | Unique name across both sheets: letters, digits, `.`, `_`, `-` |
 | `fastq_1` | yes | Read 1, or the only file of a single-end library |
 | `fastq_2` | no | Read 2; leave empty for single-end |
 | `age_group` | yes | `ancient` or `modern`; decides how reads are trimmed and counted |
+| `environment` | sources | The environment a source comes from: `oral`, `gut`, `soil`, `laboratory` ... Case and surrounding spaces are ignored |
+| `project` | sources | The study a source comes from; cross-validation holds out one study at a time |
 | `layout` | no | `PE` or `SE`; inferred from `fastq_2` |
 | `host_action` | no | `remove` (default) or `skip`, for libraries without host DNA such as sediment |
 | `host_ref` | no | Another indexed host FASTA for this library; empty or `default` uses `--host_fasta` |
 | `host_group` | no | Name of that host, such as `pig`; needs its own `host_ref` |
 | `unit_id` | no | Groups several runs of one biological sample |
-| `source_sink`, `model_source_env` | no | For [source attribution](attribution.md) |
-| `project` | no | The study a library comes from; cross-validation holds out one study at a time |
 
-Paths can be absolute, URLs or relative to the samplesheet, so a sheet and its reads can move together.
+Other columns are kept and passed on to the attribution tables. Paths can be absolute, URLs or relative to the sheet, so a sheet and its reads can move together.
+
+MSTFlow reads both sheets before anything runs. It lists every problem at once, with the sheet and line, or prints what it read: the samples, and the sources per environment and study. Labels reach only source attribution, so correcting an environment and rerunning with `-resume` repeats attribution alone, not trimming or classification.
 
 Ancient libraries are trimmed, and overlapping mates merged, with AdapterRemoval; modern ones with fastp. From then on a read pair or a merged read counts once, as a *fragment* ([design notes](design-notes.md)).
 
@@ -54,15 +61,17 @@ Ancient libraries are trimmed, and overlapping mates merged, with AdapterRemoval
 
 **Counts.** The table holds, per genus (`--rank`), the reads Kraken2 placed in it or below. Reads placed only higher up are left out, and every read counts, so a mixture's counts are the sum of its sources' ([why no Bracken](design-notes.md#why-not-bracken)).
 
-## Source attribution and authentication
+## Source attribution, panels and authentication
 
-Add `source_sink` and `model_source_env` to the samplesheet and choose the methods:
+Giving `--sources` turns source attribution on: SourceTracker2 estimates which share of each sample comes from each environment. More methods, and cross-validation on your sources:
 
 ```bash
 --attribution_methods sourcetracker2,feast --attribution_cv true
 ```
 
 [Source attribution](attribution.md) describes the five methods, how calls are made and how cross-validation scores them.
+
+**Panels.** The sources of a run are saved in `results/panel/`: their counts (`counts.tsv`) and labels (`sources.tsv`). `--panel results/panel` uses them in a later run without classifying their reads again, alone or together with more `--sources`; that run saves the combined panel. A panel is valid only with the database and settings of the run that made it (`results/pipeline_info` records them), since counts from another database are not comparable. A run with `--sources` and no `--input` profiles and scores the sources only, to build or check a panel.
 
 To test ancient taxa for damage, give reference genomes with Kraken-style headers (`>seqid|kraken:taxid|1750`):
 
@@ -99,4 +108,4 @@ params.container_kraken2 = '/shared/containers/kraken2-2.1.6.sif'
 
 ## Reproducibility
 
-Each run writes the samplesheet, the Nextflow report, timeline and trace to `results/pipeline_info`, and each tool's version next to its output. With a pinned release (`-r`) and the database snapshot, that is what you need to rerun an analysis exactly.
+Each run writes the samples and sources as read, the Nextflow report, timeline and trace to `results/pipeline_info`, and each tool's version next to its output. With a pinned release (`-r`) and the database snapshot, that is what you need to rerun an analysis exactly.

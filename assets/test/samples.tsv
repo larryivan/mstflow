@@ -1,0 +1,11 @@
+sample_id	fastq_1	fastq_2	age_group	host_action	project	run
+calculus	https://github.com/larryivan/mstflow/releases/download/test-data-v1/calculus_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/calculus_R2.fastq.gz	ancient	remove	PRJEB55583	ERR10114857
+coprolite	https://github.com/larryivan/mstflow/releases/download/test-data-v1/coprolite_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/coprolite_R2.fastq.gz	ancient	remove	PRJEB44507	ERR5766170
+sediment	https://github.com/larryivan/mstflow/releases/download/test-data-v1/sediment.fastq.gz		ancient	skip	PRJEB77295	ERR13348407
+bone	https://github.com/larryivan/mstflow/releases/download/test-data-v1/bone.fastq.gz		ancient	remove	PRJEB18722	ERR1777568
+plaque	https://github.com/larryivan/mstflow/releases/download/test-data-v1/plaque_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/plaque_R2.fastq.gz	modern	remove	PRJEB6997	ERR589346
+faeces	https://github.com/larryivan/mstflow/releases/download/test-data-v1/faeces_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/faeces_R2.fastq.gz	modern	remove	PRJEB6997	ERR589441
+meadow_soil	https://github.com/larryivan/mstflow/releases/download/test-data-v1/meadow_soil_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/meadow_soil_R2.fastq.gz	modern	skip	PRJNA297196	SRR2546422
+mix_oral_gut	https://github.com/larryivan/mstflow/releases/download/test-data-v1/mix_oral_gut_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/mix_oral_gut_R2.fastq.gz	modern	remove		
+mix_oral_gut_ancient	https://github.com/larryivan/mstflow/releases/download/test-data-v1/mix_oral_gut_ancient_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/mix_oral_gut_ancient_R2.fastq.gz	ancient	remove		
+mix_gut_soil	https://github.com/larryivan/mstflow/releases/download/test-data-v1/mix_gut_soil_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/mix_gut_soil_R2.fastq.gz	modern	remove		

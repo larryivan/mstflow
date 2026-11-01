@@ -1,5 +1,6 @@
 # Overrides -profile test with the generated stub data (tests/stub/make_stub_data.py).
-input: tests/stub/data/metadata.tsv
+input: tests/stub/data/samples.tsv
+sources: tests/stub/data/sources.tsv
 outdir: results/stub
 host_fasta: tests/stub/data/refs/chm13_tiny.fa
 kraken2_db: tests/stub/data/kraken2_stub_db

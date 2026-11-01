@@ -7,6 +7,7 @@ and downloaded on the first run. This directory holds the recipe they were built
 
 | File | Contents |
 |---|---|
+| [`samples.tsv`](samples.tsv), [`sources.tsv`](sources.tsv) | The sheets the test profile runs: the samples to trace, and the sources with their environment |
 | [`libraries.tsv`](libraries.tsv) | The 18 libraries, with their ENA run and project accessions |
 | [`mixtures.tsv`](mixtures.tsv) | The three mixtures and the share of each library in them |
 | [`genomes.tsv`](genomes.tsv) | The 274 reference genomes in the Kraken2 database |
@@ -41,7 +42,7 @@ Each library is represented by its first 50,000 reads (read pairs for paired-end
 
 The sources include ancient libraries as well as modern ones, as real source panels for
 ancient samples do; every sink's own study is kept out of its environment's sources.
-The `project` column of the samplesheet groups the libraries by study, so
+The `project` column of `sources.tsv` groups the sources by study, so
 cross-validation holds out one study at a time.
 
 ## Mixtures

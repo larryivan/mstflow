@@ -4,7 +4,9 @@
 #
 # Every other option and its default is in docs/parameters.md.
 
-input: samplesheet.tsv
+input: samples.tsv                     # the samples to trace
+sources: sources.tsv                   # reference samples, with environment and project
+# panel: results/panel                 # or, instead of or besides sources, those of an earlier run
 outdir: results
 
 kraken2_db: /path/to/k2_standard      # a prebuilt index, or any Kraken2 database
@@ -16,8 +18,8 @@ host_fasta: /path/to/chm13v2.0.fa     # with its BWA index (.amb .ann .bwt .pac 
 # taxon_filter: prokaryote
 # taxdump: /path/to/taxdump
 
-# Attribute samples to source environments (needs source_sink and model_source_env
-# columns), and score each method on the sources, one study (project column) at a time:
+# Add methods beside SourceTracker2, and score each on the sources, one study (project
+# column) at a time:
 # attribution_methods: sourcetracker2,feast
 # attribution_cv: true
 

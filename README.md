@@ -23,7 +23,7 @@ and source attribution with five methods, plus a test of which one works on your
 - **Authentication.** The leading taxa of each ancient library are tested for ancient DNA damage, so a modern contaminant stands out. [How it works](docs/authentication.md)
 - **Reproducible.** Tools run from pinned containers or conda environments, and every run records versions and parameters.
 
-A *sink* is a sample to explain, such as an ancient dental calculus; *sources* are reference samples of known origin, such as oral, gut or soil.
+A *sample to trace* (a *sink*) is a sample to explain, such as an ancient dental calculus; *sources* are reference samples of known origin, such as oral, gut or soil.
 
 ## Quick start
 
@@ -47,33 +47,43 @@ If your choice is missing, MSTFlow says so at once and lists what it found.
 
 ## Your own data
 
-A tab-separated samplesheet, one row per library:
+Two tab- or comma-separated sheets, one row per library. The samples to trace:
 
 | sample_id | fastq_1 | fastq_2 | age_group |
 |---|---|---|---|
-| bone_01 | reads/bone_01_R1.fastq.gz | reads/bone_01_R2.fastq.gz | ancient |
-| gut_01 | reads/gut_01.fastq.gz | | modern |
+| calculus_01 | reads/calculus_01_R1.fastq.gz | reads/calculus_01_R2.fastq.gz | ancient |
+| sediment_01 | reads/sediment_01.fastq.gz | | ancient |
+
+and the sources, with the same columns plus the environment each comes from and its study:
+
+| sample_id | fastq_1 | fastq_2 | age_group | environment | project |
+|---|---|---|---|---|---|
+| plaque_01 | reads/plaque_01_R1.fastq.gz | reads/plaque_01_R2.fastq.gz | modern | oral | study_A |
+| gut_01 | reads/gut_01.fastq.gz | | modern | gut | study_B |
 
 ```bash
 nextflow run larryivan/mstflow -profile docker \
-    --input samplesheet.tsv \
+    --input samples.tsv \
+    --sources sources.tsv \
     --kraken2_db k2_standard/ \
     --host_fasta chm13v2.0.fa
 ```
 
-`--kraken2_db` takes a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2) as downloaded (`.tar.gz` or URL), and `--host_fasta` a BWA-indexed genome. That gives genus tables. `--help` lists every option.
+`--kraken2_db` takes a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2) as downloaded (`.tar.gz` or URL), and `--host_fasta` a BWA-indexed genome. Every library is classified against the one database, and SourceTracker2 estimates where each sample's microbes came from. Before anything runs, MSTFlow prints what it read: the samples, and the sources per environment and study. Without `--sources` it builds the genus tables only. `--help` lists every option.
 
-**To attribute sinks and score the methods,** add three columns that label the libraries of known origin as *sources*, name their environment and say which study they come from:
+**Reuse your sources.** The sources a run used are saved in `results/panel/`. Give that directory with `--panel` next time, and only the new samples are classified:
 
-| sample_id | source_sink | model_source_env | project |
-|---|---|---|---|
-| calculus_01 | sink | | |
-| oral_01 | source | oral | study_A |
-| gut_01 | source | gut | study_A |
-| oral_02 | source | oral | study_B |
-| gut_02 | source | gut | study_B |
+```bash
+nextflow run larryivan/mstflow -profile docker \
+    --input new_samples.tsv \
+    --panel results/panel \
+    --kraken2_db k2_standard/ \
+    --host_fasta chm13v2.0.fa
+```
 
-and switch it on with `--attribution_methods sourcetracker2,feast --attribution_cv true`. MSTFlow estimates where each sink's microbes came from, then holds out one study's sources at a time, treats them as sinks of known origin and reports how often each method names the right environment. [Details](docs/attribution.md)
+A panel holds counts, so it is valid only with the database and settings of the run that made it. `--panel` and `--sources` can be given together, to add sources to a panel.
+
+**Check the result.** `--attribution_cv true` holds out one study's sources at a time, treats them as samples of known origin and reports how often the call is right. `--attribution_methods sourcetracker2,feast,fastst,sourceid_nmf,sourcepredict` runs four more methods beside SourceTracker2 for comparison. [Details](docs/attribution.md)
 
 To test ancient taxa for damage, give reference genomes with `--authentication_genomes`; see [usage](docs/usage.md).
 
@@ -88,7 +98,7 @@ To test ancient taxa for damage, give reference genomes with `--authentication_g
 | sediment | ancient | 50,000 | 47,583 | 4.8% | 18 | ok |
 | bone | ancient | 50,000 | 45,062 | 2.4% | 4 | few_genera |
 
-Next to it: genus tables, a MultiQC report, and, when switched on, `attribution/` (each method's call per sink and its accuracy on held-out sources) and `authentication/` (a damage verdict per taxon). [Output files](docs/output.md)
+Next to it: genus tables, a MultiQC report, and, when switched on, `attribution/` (where each sample's microbes came from, and the accuracy on held-out sources), `panel/` (the sources, for `--panel`) and `authentication/` (a damage verdict per taxon). [Output files](docs/output.md)
 
 ## Documentation
 

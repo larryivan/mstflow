@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The samples to trace (`--input`) and the sources (`--sources`, with `environment` and `project` columns) are two sheets; the `source_sink` and `model_source_env` columns are gone.
+- `--panel` reuses the sources of an earlier run without classifying them again. Every run with `--sources` writes its sources to `results/panel/`.
+- Source attribution runs whenever there are sources, with SourceTracker2 unless `--attribution_methods` says otherwise. A run with sources only scores them and writes the panel.
+- The sheets are read before any task starts, as TSV or CSV. Every problem is listed at once with its line, and a summary of the samples and of the sources per environment is printed.
+- Changing a label reruns source attribution only: labels no longer reach trimming, host removal or classification.
+- A misspelled option stops the run.
+
 ## 0.1.0 (2026-10-21)
 
 First public release.

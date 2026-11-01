@@ -8,7 +8,8 @@
 - host: the human mitochondrial genome (NC_012920.1)
 - mixtures: sinks of known composition, made from the reads of the libraries in
   mixtures.tsv (see that section of README.md)
-- samplesheet.tsv, pointing at the reads by file name
+- samples.tsv and sources.tsv, the two sheets of the test profile, here in assets/test,
+  pointing at the reads in the test-data release
 
 Then run build_test_db.sh to build the Kraken2 database and the release files.
 Only the Python standard library is used.
@@ -144,10 +145,21 @@ def mixtures(libraries):
     return rows
 
 
-def samplesheet(rows):
-    with open(BUILD / "samplesheet.tsv", "w") as fh:
-        fh.write("sample_id\tfastq_1\tfastq_2\tage_group\thost_action\tsource_sink\tmodel_source_env\tproject\trun\n")
-        fh.writelines("\t".join(r) + "\n" for r in rows)
+RELEASE = "https://github.com/larryivan/mstflow/releases/download/test-data-v1/"
+
+
+def samplesheets(rows):
+    """The samples to trace and the sources, each read named by its URL in the release."""
+    with open(HERE / "samples.tsv", "w") as samples, open(HERE / "sources.tsv", "w") as sources:
+        samples.write("sample_id\tfastq_1\tfastq_2\tage_group\thost_action\tproject\trun\n")
+        sources.write("sample_id\tfastq_1\tfastq_2\tage_group\thost_action\tenvironment\tproject\trun\n")
+        for sample_id, fastq_1, fastq_2, age_group, host_action, role, environment, project, run in rows:
+            reads = [RELEASE + fastq_1, RELEASE + fastq_2 if fastq_2 else ""]
+            project = "" if project == "NA" else project
+            if role == "source":
+                sources.write("\t".join([sample_id, *reads, age_group, host_action, environment, project, run]) + "\n")
+            else:
+                samples.write("\t".join([sample_id, *reads, age_group, host_action, project, run]) + "\n")
 
 
 def genomes(pinned):
@@ -200,7 +212,7 @@ def main():
     BUILD.mkdir(exist_ok=True)
     libraries = list(csv.DictReader(open(HERE / "libraries.tsv"), delimiter="\t"))
     pinned = list(csv.DictReader(open(HERE / "genomes.tsv"), delimiter="\t"))
-    samplesheet(reads(libraries) + mixtures(libraries))
+    samplesheets(reads(libraries) + mixtures(libraries))
     host()
     taxonomy(pinned)
     genomes(pinned)

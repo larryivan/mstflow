@@ -40,262 +40,6 @@ def run_script(script, *args, cwd=None, check=True):
 
 
 class ReferenceInterfaceTests(unittest.TestCase):
-    def test_validate_host_action_contract(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fields = [
-                "sample_id",
-                "fastq_1",
-                "fastq_2",
-                "layout",
-                "age_group",
-                "host_action",
-                "host_group",
-                "host_ref",
-            ]
-            base = {
-                "sample_id": "sample_1",
-                "fastq_1": "reads.fq.gz",
-                "fastq_2": "NA",
-                "layout": "SE",
-                "age_group": "ancient",
-                "host_action": "skip",
-                "host_group": "none",
-                "host_ref": "NA",
-            }
-            metadata = root / "metadata.tsv"
-            output = root / "validated.tsv"
-
-            write_tsv(metadata, fields, [base])
-            run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--require-explicit-host-action",
-            )
-            normalized = read_tsv(output)[0]
-            self.assertEqual(normalized["host_action"], "skip")
-            self.assertEqual(normalized["host_group"], "NA")
-            self.assertEqual(normalized["host_ref"], "NA")
-
-            missing_action = dict(base, host_action="NA")
-            write_tsv(metadata, fields, [missing_action])
-            missing = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--require-explicit-host-action",
-                check=False,
-            )
-            self.assertNotEqual(missing.returncode, 0)
-            self.assertIn("host_action must be explicitly set", missing.stderr)
-
-            skip_with_reference = dict(base, host_ref="default")
-            write_tsv(metadata, fields, [skip_with_reference])
-            conflicted = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                check=False,
-            )
-            self.assertNotEqual(conflicted.returncode, 0)
-            self.assertIn("host_action=skip conflicts with host_ref=default", conflicted.stderr)
-
-            # Without a host_ref column, skip needs nothing else.
-            no_ref_fields = [f for f in fields if f != "host_ref"]
-            no_ref = {k: v for k, v in base.items() if k != "host_ref"}
-            write_tsv(metadata, no_ref_fields, [no_ref])
-            run_script("validate_metadata.py", "--input", metadata, "--output", output)
-            self.assertEqual(read_tsv(output)[0]["host_ref"], "NA")
-
-            remove = dict(
-                base,
-                host_action="remove",
-                host_group="human",
-                host_ref="default",
-            )
-            write_tsv(metadata, fields, [remove])
-            run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--require-explicit-host-action",
-            )
-            self.assertEqual(read_tsv(output)[0]["host_action"], "remove")
-
-    def test_validate_keeps_extra_columns_and_guards_host_group(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata = root / "metadata.tsv"
-            output = root / "validated.tsv"
-            fields = [
-                "sample_id",
-                "fastq_1",
-                "fastq_2",
-                "layout",
-                "age_group",
-                "host_ref",
-                "host_group",
-                "source_sink",
-                "model_source_env",
-                "unit_id",
-                "custom_panel_note",
-            ]
-            row = {
-                "sample_id": "dog_1",
-                "fastq_1": "reads.fq.gz",
-                "fastq_2": "NA",
-                "layout": "SE",
-                "age_group": "ancient",
-                "host_ref": "default",
-                "host_group": "Canid",
-                "source_sink": "source",
-                "model_source_env": "canid_paleofeces",
-                "unit_id": "dog_unit",
-                "custom_panel_note": "keep me",
-            }
-            write_tsv(metadata, fields, [row])
-
-            failed = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--require-explicit-host-for-nondefault",
-                check=False,
-            )
-            self.assertNotEqual(failed.returncode, 0)
-            self.assertIn("requires an explicit host_ref", failed.stderr)
-
-            row["host_ref"] = "dog.fa"
-            write_tsv(metadata, fields, [row])
-            run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--require-explicit-host-for-nondefault",
-            )
-            validated = read_tsv(output)[0]
-            self.assertEqual(validated["custom_panel_note"], "keep me")
-            self.assertEqual(validated["model_source_env"], "canid_paleofeces")
-            self.assertEqual(validated["host_group"], "canid")
-            self.assertEqual(validated["unit_id"], "dog_unit")
-            self.assertEqual(validated["preprocess_mode"], "adapterremoval_se")
-
-            na_row = dict(row)
-            na_row.update(
-                {
-                    "sample_id": "human_na",
-                    "age_group": "modern",
-                    "host_ref": "NA",
-                    "host_group": "NA",
-                    "source_sink": "sink",
-                    "model_source_env": "NA",
-                    "unit_id": "NA",
-                }
-            )
-            write_tsv(metadata, fields, [na_row])
-            run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--require-explicit-host-for-nondefault",
-            )
-            normalized = read_tsv(output)[0]
-            self.assertEqual(normalized["preprocess_mode"], "fastp_se")
-            self.assertEqual(normalized["host_group"], "human")
-            self.assertEqual(normalized["model_source_env"], "NA")
-            self.assertEqual(normalized["unit_id"], "human_na")
-
-            na_row["source_sink"] = "source"
-            write_tsv(metadata, fields, [na_row])
-            no_env = run_script("validate_metadata.py", "--input", metadata, "--output", output, check=False)
-            self.assertNotEqual(no_env.returncode, 0)
-            self.assertIn("source rows require model_source_env", no_env.stderr)
-
-    def test_validate_rejects_unsafe_ids_and_empty_manifests(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fq = "reads.fq.gz"
-            fields = ["sample_id", "fastq_1", "fastq_2", "layout", "age_group", "unit_id"]
-            metadata = root / "metadata.tsv"
-            output = root / "validated.tsv"
-            write_tsv(
-                metadata,
-                fields,
-                [
-                    {
-                        "sample_id": "unsafe/name",
-                        "fastq_1": fq,
-                        "fastq_2": "NA",
-                        "layout": "SE",
-                        "age_group": "modern",
-                        "unit_id": "unit with spaces",
-                    }
-                ],
-            )
-            failed = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                check=False,
-            )
-            self.assertNotEqual(failed.returncode, 0)
-            self.assertIn("sample_id 'unsafe/name' is not filesystem-safe", failed.stderr)
-            self.assertIn("unit_id 'unit with spaces' is not filesystem-safe", failed.stderr)
-
-            write_tsv(metadata, fields, [])
-            empty = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                check=False,
-            )
-            self.assertNotEqual(empty.returncode, 0)
-            self.assertIn("metadata contains no sample rows", empty.stderr)
-
-            write_tsv(
-                metadata,
-                fields,
-                [
-                    {
-                        "sample_id": "NA",
-                        "fastq_1": fq,
-                        "fastq_2": "NA",
-                        "layout": "SE",
-                        "age_group": "modern",
-                        "unit_id": "NA",
-                    }
-                ],
-            )
-            missing_id = run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                check=False,
-            )
-            self.assertNotEqual(missing_id.returncode, 0)
-            self.assertIn("reserved missing-value token", missing_id.stderr)
-
     def test_build_requires_one_to_one_and_reports_kraken_qc(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -465,7 +209,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             ["soil1", "soil_unit", "source", "soil", "P2", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
             ["soil2", "soil_unit", "source", "soil", "P2", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
             ["sink1", "sink_unit", "sink", "NA", "P3", "remove", "human", "bad", "bad", "bad", "bad", "bad"],
-            ["blank1", "blank_unit", "", "blank", "P3", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
+            ["blank1", "blank_unit", "sink", "NA", "P3", "skip", "NA", "bad", "bad", "bad", "bad", "bad"],
         ]
         write_tsv(metadata, fields, [dict(zip(fields, row)) for row in rows])
         counts = root / "counts.tsv"
@@ -516,19 +260,14 @@ class ReferenceInterfaceTests(unittest.TestCase):
             check=check,
         )
 
-    def test_prepare_aggregates_units_and_leaves_out_unselected_rows(self):
+    def test_prepare_aggregates_units(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             metadata, counts, feature_qc = self._source_tracker_fixture(root)
-            rows = read_tsv(metadata)
-            for row in rows:
-                if row["sample_id"].startswith("bone"):
-                    row["source_sink"] = "NA"
-            write_tsv(metadata, list(rows[0]), rows)
             self._prepare(root, metadata, counts, feature_qc, "st",
                           "--min-source-count", "1000", "--min-sink-count", "1000")
             mapping = {row["#SampleID"]: row for row in read_tsv(root / "st_map.tsv")}
-            self.assertEqual(set(mapping), {"soil_unit", "sink_unit"})
+            self.assertEqual(set(mapping), {"bone_unit", "soil_unit", "sink_unit", "blank_unit"})
             self.assertEqual(mapping["soil_unit"]["aggregation_n"], "2")
             self.assertEqual(mapping["soil_unit"]["Env"], "soil")
             self.assertEqual(mapping["soil_unit"]["project"], "P2")
@@ -536,11 +275,125 @@ class ReferenceInterfaceTests(unittest.TestCase):
             qc = {row["input_sample_id"]: row for row in read_tsv(root / "st_qc.tsv")}
             self.assertEqual(qc["soil1"]["analysis_sample_id"], "soil_unit")
             self.assertEqual(qc["soil1"]["included"], "true")
-            self.assertEqual(qc["bone1"]["exclusion_reason"], "source_sink_not_selected")
-            self.assertEqual(qc["blank1"]["exclusion_reason"], "source_sink_not_selected")
+            self.assertEqual(qc["soil1"]["origin"], "samplesheet")
             with open(root / "st_counts.tsv", newline="") as handle:
                 header = next(csv.reader(handle, delimiter="\t"))
-            self.assertEqual(header, ["#OTU ID", "soil_unit", "sink_unit"])
+            self.assertEqual(header, ["#OTU ID", "bone_unit", "soil_unit", "sink_unit", "blank_unit"])
+
+            rows = read_tsv(metadata)
+            for row in rows[:2]:
+                row["source_sink"] = "NA"
+            write_tsv(metadata, list(rows[0]), rows)
+            unlabelled = self._prepare(root, metadata, counts, feature_qc, "bad", check=False)
+            self.assertIn("neither source nor sink", unlabelled.stderr)
+
+    def test_prepare_names_the_units_it_had_to_leave_out(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata, counts, feature_qc = self._source_tracker_fixture(root)
+            failed = self._prepare(root, metadata, counts, feature_qc, "deep", "--min-sink-count", "5000", check=False)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("no sample to trace is deep enough for source attribution: "
+                          "sink_unit (below_min_sink_count:5000), blank_unit (below_min_sink_count:5000)", failed.stderr)
+            # A run of sources only is prepared for cross-validation and the panel.
+            self._prepare(root, metadata, counts, feature_qc, "sources", "--min-sink-count", "5000", "--no-sinks")
+            self.assertEqual({row["SourceSink"] for row in read_tsv(root / "sources_map.tsv")}, {"source"})
+
+    def _panel_fixture(self, root):
+        """Two sinks and two sources over three taxa, one only in the sources and one
+        only in the sinks; samples to trace come first, as in the samplesheet MSTFlow writes."""
+        fields = ["sample_id", "unit_id", "source_sink", "model_source_env", "project", "host_action"]
+        rows = [
+            ["calculus", "calculus", "sink", "NA", "NA", "remove"],
+            ["sediment", "sediment", "sink", "NA", "NA", "skip"],
+            ["plaque", "plaque", "source", "oral", "P1", "remove"],
+            ["soil", "soil", "source", "soil", "P2", "skip"],
+        ]
+        taxa = {"taxid_10__Alpha": [0, 0, 30, 0], "taxid_20__Beta": [10, 20, 5, 40], "taxid_5__Gamma": [7, 1, 0, 0]}
+        write_tsv(root / "metadata.tsv", fields, [dict(zip(fields, row)) for row in rows])
+        with open(root / "counts.tsv", "w", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(["#OTU ID", *[row[0] for row in rows]])
+            for taxon, values in taxa.items():
+                writer.writerow([taxon, *values])
+        write_tsv(root / "qc.tsv", ["sample_id", "kraken_total_reads", "kraken_classified_reads",
+                                    "rank_total_reads", "taxon_filter_retained_reads"],
+                  [{"sample_id": row[0], "kraken_total_reads": 100, "kraken_classified_reads": 50,
+                    "rank_total_reads": 50, "taxon_filter_retained_reads": 50} for row in rows])
+        return rows, taxa
+
+    def _prepare_panel(self, root, name, *extra, check=True):
+        (root / name).mkdir(exist_ok=True)
+        return self._prepare(root, root / "metadata.tsv", root / "counts.tsv", root / "qc.tsv", name,
+                             "--min-taxon-filter-retained-reads", "0", "--write-panel", root / name, *extra,
+                             check=check)
+
+    def test_a_panel_reproduces_the_run_that_made_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first, second = Path(directory) / "first", Path(directory) / "second"
+            first.mkdir()
+            second.mkdir()
+            rows, taxa = self._panel_fixture(first)
+            self._prepare_panel(first, "full")
+            self.assertEqual(read_tsv(first / "full/sources.tsv"), [
+                {"source_id": "plaque", "environment": "oral", "project": "P1", "libraries": "plaque"},
+                {"source_id": "soil", "environment": "soil", "project": "P2", "libraries": "soil"},
+            ])
+            # Gamma is in the sinks only, so it is not part of the panel.
+            self.assertEqual([row["#OTU ID"] for row in read_tsv(first / "full/counts.tsv")],
+                             ["taxid_10__Alpha", "taxid_20__Beta"])
+
+            # The same sinks against the panel instead of the sources' reads.
+            sinks = [row for row in rows if row[2] == "sink"]
+            fields = ["sample_id", "unit_id", "source_sink", "model_source_env", "project", "host_action"]
+            write_tsv(second / "metadata.tsv", fields, [dict(zip(fields, row)) for row in sinks])
+            with open(second / "counts.tsv", "w", newline="") as handle:
+                writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+                writer.writerow(["#OTU ID", "calculus", "sediment"])
+                for taxon, values in taxa.items():
+                    if any(values[:2]):
+                        writer.writerow([taxon, *values[:2]])
+            qc = [row for row in read_tsv(first / "qc.tsv") if row["sample_id"] in ("calculus", "sediment")]
+            write_tsv(second / "qc.tsv", list(qc[0]), qc)
+            self._prepare_panel(second, "reused", "--panel-counts", first / "full/counts.tsv",
+                                "--panel-sources", first / "full/sources.tsv")
+
+            self.assertEqual((first / "full_counts.tsv").read_bytes(), (second / "reused_counts.tsv").read_bytes())
+            labels = ("#SampleID", "SourceSink", "Env", "project", "aggregation_members")
+            self.assertEqual([tuple(row[field] for field in labels) for row in read_tsv(first / "full_map.tsv")],
+                             [tuple(row[field] for field in labels) for row in read_tsv(second / "reused_map.tsv")])
+            qc = {row["input_sample_id"]: row for row in read_tsv(second / "reused_qc.tsv")}
+            self.assertEqual((qc["plaque"]["origin"], qc["plaque"]["included"]), ("panel", "true"))
+            self.assertEqual((qc["calculus"]["origin"], qc["calculus"]["included"]), ("samplesheet", "true"))
+
+    def test_panel_sources_are_depth_checked_and_named_apart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._panel_fixture(root)
+            self._prepare_panel(root, "full")
+            panel = ["--panel-counts", root / "full/counts.tsv", "--panel-sources", root / "full/sources.tsv"]
+
+            clash = self._prepare_panel(root, "clash", *panel, check=False)
+            self.assertIn("the panel has source(s) named like samples of this run: plaque, soil", clash.stderr)
+
+            rows = read_tsv(root / "full/sources.tsv")
+            for row in rows:
+                row["source_id"] = "panel_" + row["source_id"]
+                row["environment"] = " " + row["environment"].upper()
+            write_tsv(root / "full/sources.tsv", list(rows[0]), rows)
+            with open(root / "full/counts.tsv") as handle:
+                text = handle.read().replace("\tplaque\tsoil", "\tpanel_plaque\tpanel_soil", 1)
+            (root / "full/counts.tsv").write_text(text)
+            self._prepare_panel(root, "deep", *panel, "--min-source-count", "40")
+            qc = {row["input_sample_id"]: row for row in read_tsv(root / "deep_qc.tsv")}
+            self.assertEqual(qc["panel_plaque"]["exclusion_reason"], "below_min_source_count:40")
+            self.assertEqual(qc["panel_soil"]["included"], "true")
+            mapping = {row["#SampleID"]: row for row in read_tsv(root / "deep_map.tsv")}
+            self.assertEqual(mapping["panel_soil"]["Env"], "soil")
+            # This run's sources and the panel's together make the next panel, without
+            # those too shallow to use.
+            self.assertEqual([row["source_id"] for row in read_tsv(root / "deep/sources.tsv")],
+                             ["soil", "panel_soil"])
 
     def test_prepare_reports_undefined_qc_as_na_and_rejects_fractional_counts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -648,7 +501,7 @@ class ReferenceInterfaceTests(unittest.TestCase):
             write_tsv(feature_qc, list(qc_rows[0]), qc_rows)
             self._prepare(root, metadata, counts, feature_qc, "all", "--taxon-scope", "all")
             mapping = {row["#SampleID"] for row in read_tsv(root / "all_map.tsv")}
-            self.assertEqual(mapping, {"bone_unit", "soil_unit", "sink_unit"})
+            self.assertEqual(mapping, {"bone_unit", "soil_unit", "sink_unit", "blank_unit"})
 
     def test_seeded_sourcetracker_wrapper_validates_and_forwards_seed(self):
         with tempfile.TemporaryDirectory() as directory:

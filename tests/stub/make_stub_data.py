@@ -34,25 +34,26 @@ def write_fastq(path, records):
             handle.write(f"@{name}\n{seq}\n+\n{qual}\n")
 
 
-def write_metadata(path):
+def write_samplesheets(directory):
+    """The samples to trace and the sources, in the two sheets MSTFlow reads."""
     rows = [
         ("modern_pe", READ_DIR / "modern_pe_R1.fastq.gz", READ_DIR / "modern_pe_R2.fastq.gz", "PE", "modern", "source", "human_fecal_gastrointestinal", "remove"),
         ("modern_se", READ_DIR / "modern_se.fastq.gz", "NA", "SE", "modern", "source", "extraction_library_blank", "skip"),
-        ("ancient_pe", READ_DIR / "ancient_pe_R1.fastq.gz", READ_DIR / "ancient_pe_R2.fastq.gz", "PE", "ancient", "sink", "human_fecal_gastrointestinal", "remove"),
-        ("ancient_se", READ_DIR / "ancient_se.fastq.gz", "NA", "SE", "ancient", "sink", "extraction_library_blank", "skip"),
+        ("ancient_pe", READ_DIR / "ancient_pe_R1.fastq.gz", READ_DIR / "ancient_pe_R2.fastq.gz", "PE", "ancient", "sink", "", "remove"),
+        ("ancient_se", READ_DIR / "ancient_se.fastq.gz", "NA", "SE", "ancient", "sink", "", "skip"),
     ]
-    with open(path, "w") as handle:
-        handle.write(
-            "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\thost_action\thost_group\thost_ref\t"
-            "source_sink\tmodel_source_env\tproject\n"
-        )
-        for sample_id, fastq_1, fastq_2, layout, age_group, source_sink, env, host_action in rows:
+    header = "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\thost_action\thost_group\thost_ref"
+    with open(directory / "samples.tsv", "w") as samples, open(directory / "sources.tsv", "w") as sources:
+        samples.write(header + "\n")
+        sources.write(header + "\tenvironment\tproject\n")
+        for sample_id, fastq_1, fastq_2, layout, age_group, role, env, host_action in rows:
             host_group = "human" if host_action == "remove" else "NA"
             host_ref = str(REF_DIR / "chm13_tiny.fa") if host_action == "remove" else "NA"
-            handle.write(
-                f"{sample_id}\t{fastq_1}\t{fastq_2}\t{layout}\t{age_group}\t{host_action}\t{host_group}\t{host_ref}\t"
-                f"{source_sink}\t{env}\t{sample_id}\n"
-            )
+            line = f"{sample_id}\t{fastq_1}\t{fastq_2}\t{layout}\t{age_group}\t{host_action}\t{host_group}\t{host_ref}"
+            if role == "source":
+                sources.write(f"{line}\t{env}\t{sample_id}\n")
+            else:
+                samples.write(line + "\n")
 
 
 def main():
@@ -104,7 +105,7 @@ def main():
         [("ancient_se_host", HOST[:54]), ("ancient_se_nonhost", NONHOST_C[:54])],
     )
 
-    write_metadata(TEST_DIR / "metadata.tsv")
+    write_samplesheets(TEST_DIR)
 
     # SourcePredict and authentication read the NCBI taxonomy; SourceID-NMF's code is
     # staged from a directory. Stub mode needs only the files to exist, and no network.
@@ -118,7 +119,7 @@ def main():
         (nmf / name).write_text("# stub\n")
 
     print(f"Wrote tiny test data under {TEST_DIR}")
-    print(f"Metadata: {TEST_DIR / 'metadata.tsv'}")
+    print(f"Samplesheets: {TEST_DIR / 'samples.tsv'} and {TEST_DIR / 'sources.tsv'}")
     print(f"Host FASTA: {REF_DIR / 'chm13_tiny.fa'}")
 
 

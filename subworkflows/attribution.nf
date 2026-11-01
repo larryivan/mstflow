@@ -11,28 +11,36 @@ include { EVALUATE_ATTRIBUTION } from '../modules/evaluate_attribution'
 include { binScript; isOn; splitList; taxdumpFile; taxdumpPath } from './utils'
 
 /*
- * Estimate where each sink's microbes came from with every requested method.
+ * Estimate where each sample's microbes came from with every requested method, against
+ * the sources of this run and of a panel.
  *
  * All methods read the same inputs and write the same result table, so they can be
  * compared directly. With --attribution_cv, each is also run on cross-validation
  * folds in which whole groups of sources (by default, studies) are held out as
- * sinks of known origin, and scored on them.
+ * sinks of known origin, and scored on them. The sources used are written to
+ * results/panel when they came from --sources.
  */
 workflow ATTRIBUTION {
     take:
     counts        // taxon count table (all taxa or after the taxon filter)
-    metadata      // validated samplesheet
+    samplesheet   // checked samplesheet with roles and labels
     sample_qc     // per-sample classification QC from the profiling step
+    panel         // [counts.tsv, sources.tsv] of --panel, or []
 
     main:
     def methods = splitList(params.attribution_methods)
     def attributionModule = binScript('mstflow_attribution.py')
     def attributionHelpersR = [binScript('mstflow_attribution.R'), attributionModule]
 
-    PREPARE_ATTRIBUTION_INPUTS(counts, metadata, sample_qc, binScript('prepare_attribution_inputs.py'))
-    main_analysis = PREPARE_ATTRIBUTION_INPUTS.out.counts
-        .combine(PREPARE_ATTRIBUTION_INPUTS.out.map)
-        .map { table, mapping -> tuple([analysis: 'main'], table, mapping) }
+    PREPARE_ATTRIBUTION_INPUTS(counts, samplesheet, sample_qc, panel, binScript('prepare_attribution_inputs.py'))
+    // Without samples to trace, the methods run only on the cross-validation folds.
+    if (params.input) {
+        main_analysis = PREPARE_ATTRIBUTION_INPUTS.out.counts
+            .combine(PREPARE_ATTRIBUTION_INPUTS.out.map)
+            .map { table, mapping -> tuple([analysis: 'main'], table, mapping) }
+    } else {
+        main_analysis = channel.empty()
+    }
 
     if (isOn(params.attribution_cv)) {
         SPLIT_ATTRIBUTION_FOLDS(
@@ -100,12 +108,14 @@ workflow ATTRIBUTION {
         sinks: meta.analysis == 'main'
         folds: true
     }
-    SUMMARIZE_ATTRIBUTION(
-        by_analysis.sinks.map { _meta, result -> result }.toSortedList { a, b -> a.name <=> b.name },
-        PREPARE_ATTRIBUTION_INPUTS.out.map,
-        binScript('summarize_attribution.py'),
-        attributionModule
-    )
+    if (params.input) {
+        SUMMARIZE_ATTRIBUTION(
+            by_analysis.sinks.map { _meta, result -> result }.toSortedList { a, b -> a.name <=> b.name },
+            PREPARE_ATTRIBUTION_INPUTS.out.map,
+            binScript('summarize_attribution.py'),
+            attributionModule
+        )
+    }
     if (isOn(params.attribution_cv)) {
         EVALUATE_ATTRIBUTION(
             by_analysis.folds.map { _meta, result -> result }.toSortedList { a, b -> a.name <=> b.name },

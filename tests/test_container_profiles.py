@@ -36,8 +36,9 @@ class ContainerDirectiveTests(unittest.TestCase):
         for module in sorted((ROOT / "modules").glob("*.nf")):
             text = module.read_text(encoding="utf-8")
             with self.subTest(module=module.name):
+                # A process with an exec: block runs in Nextflow itself and needs none.
                 self.assertEqual(
-                    text.count("process "),
+                    text.count("process ") - text.count("\n    exec:\n"),
                     text.count('container "${params.container_'),
                     f"{module.name} has a process without an explicit logical container",
                 )

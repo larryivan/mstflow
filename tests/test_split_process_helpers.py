@@ -46,34 +46,6 @@ def run_script(script, *arguments, cwd):
 
 
 class SplitProcessHelperTests(unittest.TestCase):
-    def test_metadata_validation_leaves_paths_for_nextflow_staging(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            metadata = root / "metadata.tsv"
-            output = root / "validated.tsv"
-            metadata.write_text(
-                "sample_id\tfastq_1\tfastq_2\tlayout\tage_group\thost_action\t"
-                "host_group\thost_ref\n"
-                "sample\t/outside/not-mounted.fq.gz\tNA\tSE\tmodern\tremove\t"
-                "dog\t/outside/not-mounted-dog.fa\n",
-                encoding="utf-8",
-            )
-            run_script(
-                "validate_metadata.py",
-                "--input",
-                metadata,
-                "--output",
-                output,
-                "--default-host-group",
-                "human",
-                "--require-explicit-host-for-nondefault",
-                cwd=root,
-            )
-            with output.open(encoding="utf-8", newline="") as handle:
-                row = next(csv.DictReader(handle, delimiter="\t"))
-            self.assertEqual(row["fastq_1"], "/outside/not-mounted.fq.gz")
-            self.assertEqual(row["host_ref"], "/outside/not-mounted-dog.fa")
-
     def test_adapterremoval_collapsed_policy_is_normalized_separately(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -1,0 +1,12 @@
+sample_id	fastq_1	fastq_2	age_group	host_action	environment	project	run
+oral_1	https://github.com/larryivan/mstflow/releases/download/test-data-v1/oral_1_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/oral_1_R2.fastq.gz	modern	remove	oral	PRJEB34569	ERR3579820
+oral_2	https://github.com/larryivan/mstflow/releases/download/test-data-v1/oral_2_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/oral_2_R2.fastq.gz	modern	remove	oral	PRJEB31185	ERR3307051
+oral_3	https://github.com/larryivan/mstflow/releases/download/test-data-v1/oral_3_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/oral_3_R2.fastq.gz	ancient	remove	oral	PRJEB34569	ERR3579737
+gut_1	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_1_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_1_R2.fastq.gz	modern	remove	gut	PRJNA397112	SRR5898909
+gut_2	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_2.fastq.gz		modern	remove	gut	PRJNA392180	SRR5763463
+gut_3	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_3_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_3_R2.fastq.gz	modern	remove	gut	PRJNA354235	SRR6451716
+gut_4	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_4_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/gut_4_R2.fastq.gz	ancient	remove	gut	PRJEB33577	ERR3678629
+soil_1	https://github.com/larryivan/mstflow/releases/download/test-data-v1/soil_1_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/soil_1_R2.fastq.gz	modern	skip	soil	PRJEB24121	ERR2603035
+soil_2	https://github.com/larryivan/mstflow/releases/download/test-data-v1/soil_2_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/soil_2_R2.fastq.gz	modern	skip	soil	PRJEB24121	ERR2603043
+lab_1	https://github.com/larryivan/mstflow/releases/download/test-data-v1/lab_1_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/lab_1_R2.fastq.gz	ancient	skip	laboratory	PRJEB55583	ERR10114869
+lab_2	https://github.com/larryivan/mstflow/releases/download/test-data-v1/lab_2_R1.fastq.gz	https://github.com/larryivan/mstflow/releases/download/test-data-v1/lab_2_R2.fastq.gz	ancient	skip	laboratory	PRJEB55583	ERR10114868
