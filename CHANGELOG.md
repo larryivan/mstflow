@@ -6,6 +6,7 @@
 - `--panel` reuses the sources of an earlier run without classifying them again. Every run with `--sources` writes its sources to `results/panel/`.
 - Source attribution runs whenever there are sources, with SourceTracker2 unless `--attribution_methods` says otherwise. A run with sources only scores them and writes the panel.
 - The sheets are read before any task starts, as TSV or CSV. Every problem is listed at once with its line, and a summary of the samples and of the sources per environment is printed.
+- `--help` and `--help <name>` print the help and stop, with exit status 0, before the software and the sheets are checked.
 - Changing a label reruns source attribution only: labels no longer reach trimming, host removal or classification.
 - A misspelled option stops the run.
 

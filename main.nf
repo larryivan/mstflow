@@ -23,10 +23,17 @@ include { describeInputs; librariesText; metaFromLibrary; readInputs; sampleshee
 include {
     binScript; checkSoftware; isArchive; isOn; rejectReservedArgs; requireDirectory; splitList; taxdumpFile
 } from './subworkflows/utils'
-include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
+include { paramsHelp; validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
 
 workflow {
+    // The help is printed here, before any check. nf-schema's automatic help, turned off in
+    // nextflow.config, cancels the run, and Nextflow then ends it with exit status 1.
+    if (given('help') || given('helpFull')) {
+        log.info helpText()
+        return
+    }
+
     // Types, ranges, choices and file existence come from nextflow_schema.json.
     validateParameters()
     checkSoftware()
@@ -119,6 +126,30 @@ workflow {
         }
         report.info lines.join('\n')
     }
+}
+
+
+// --help lists the options and --helpFull the nested ones too; --showHidden adds the
+// hidden ones. --help <option> explains one option, hidden or not.
+def helpText() {
+    def option = given('help') && !(params.help.toString() in ['true', 'false']) ? params.help.toString() : ''
+    def text = paramsHelp([fullHelp: given('helpFull'), showHidden: given('showHidden')], option)
+    // nf-schema 2.7.3 runs the explanation of one option into the rule below it.
+    if (option) {
+        return text.replaceFirst(/(?<=[^\s-])(?=-(\e\[\d+m)?-{52})/, '\n')
+    }
+    // It also lists its own --help, --helpFull and --showHidden ahead of the groups, then
+    // deletes only their first lines: drop their wrapped ends, between the command and the
+    // first group.
+    def parts = text.split('\n\n', 3)
+    return parts.size() < 3 ? text : [parts[0], parts[1], parts[2].replaceFirst(/^(.*\n)*?\n/, '')].join('\n\n')
+}
+
+
+// The help flags are not MSTFlow parameters, so they are read only when given. A bare
+// flag arrives as true or as the text 'true', and --help <option> as the option's name.
+def given(name) {
+    return params.containsKey(name) && !(params[name].toString().trim().toLowerCase() in ['false', ''])
 }
 
 
