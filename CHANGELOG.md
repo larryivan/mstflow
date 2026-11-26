@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- SourceID-NMF now has a licence (MIT). `--sourceid_nmf_code` points at the commit that adds it; the code is the same, so results do not change.
 - The samples to trace (`--input`) and the sources (`--sources`, with `environment` and `project` columns) are two sheets; the `source_sink` and `model_source_env` columns are gone.
 - `--panel` reuses the sources of an earlier run without classifying them again. Every run with `--sources` writes its sources to `results/panel/`.
 - Source attribution runs whenever there are sources, with SourceTracker2 unless `--attribution_methods` says otherwise. A run with sources only scores them and writes the panel.

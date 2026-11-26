@@ -1,7 +1,7 @@
 # Runtime for the source attribution methods that are not packaged in Bioconda:
-# FEAST and FastST (R), and the Python libraries SourceID-NMF needs. SourceID-NMF
-# itself has no licence, so its code is not copied in here; the workflow fetches it
-# from the authors' repository at a pinned commit.
+# FEAST and FastST (R), and the Python libraries SourceID-NMF needs. SourceID-NMF's
+# own code is not copied in here; the workflow fetches it from the authors'
+# repository at a pinned commit.
 #
 #   docker build --platform linux/amd64 -t ghcr.io/larryivan/mstflow-attribution:1.0.0 containers/attribution
 FROM rocker/r-ver:4.4.2@sha256:df26749182af64d5263bf64149d51a427b476ed28c4e046997143be3f97fdd7c

@@ -1,8 +1,8 @@
 /*
  * SourceID-NMF (Huang et al. 2024): a weighted non-negative matrix factorisation of
- * each sink into the source profiles and one unknown profile. Its repository has no
- * licence, so its code is not distributed with MSTFlow: `code` is staged from the
- * authors' repository at the commit set by --sourceid_nmf_code.
+ * each sink into the source profiles and one unknown profile. Its code (MIT) is not
+ * packaged anywhere, so MSTFlow does not ship it: `code` is staged from the authors'
+ * repository at the commit set by --sourceid_nmf_code.
  */
 process SOURCEID_NMF {
     label 'process_medium'

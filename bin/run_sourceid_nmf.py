@@ -4,7 +4,7 @@ attribution table (see mstflow_attribution.py).
 
 SourceID-NMF factorises the sink into the source profiles and one unknown profile
 with a weighted non-negative matrix factorisation. Sources of one environment are
-pooled first, as for the other methods. Its code is not redistributed with MSTFlow;
+pooled first, as for the other methods. Its code (MIT) is not packaged anywhere;
 it is staged from the authors' repository at a pinned commit (--code-dir).
 """
 import argparse
