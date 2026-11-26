@@ -568,8 +568,8 @@
                 "sourceid_nmf_code": {
                     "type": "string",
                     "description": "SourceID-NMF: where its code is fetched from, a URL or a directory.",
-                    "default": "https://raw.githubusercontent.com/ZiyiHuang0708/SourceID-NMF/4fd1cdff0b2781cdae8bf1f5c71aa6b72779578a",
-                    "help_text": "SourceID-NMF has no licence, so MSTFlow does not redistribute it. By default its files are fetched from the authors' repository at a fixed commit; on machines without internet access, clone the repository and give its directory."
+                    "default": "https://raw.githubusercontent.com/ZiyiHuang0708/SourceID-NMF/b76cf786f1b6d2bfb62dec68a983d88f6a110e07",
+                    "help_text": "SourceID-NMF (MIT licence) is not packaged anywhere, so by default its files are fetched from the authors' repository at a fixed commit; on machines without internet access, clone the repository and give its directory."
                 },
                 "sourceid_nmf_iterations": {
                     "type": "integer",

@@ -31,7 +31,7 @@ SourceTracker2 runs by default. The others are added with
 | `sourcetracker2` | Bayesian mixture, Gibbs sampling ([Knights et al. 2011](https://doi.org/10.1038/nmeth.1650)) | shares, with standard deviation over draws | BSD-3 | Bioconda |
 | `feast` | Expectation-maximisation mixture ([Shenhav et al. 2019](https://doi.org/10.1038/s41592-019-0431-x)) | shares | CC BY-NC-SA 4.0: **non-commercial use only** | GitHub, fixed commit |
 | `fastst` | Generalised least squares ([Choi et al. 2025](https://doi.org/10.7717/peerj.20161)); experimental | shares, with standard errors | MIT | GitHub, fixed commit |
-| `sourceid_nmf` | Weighted non-negative matrix factorisation ([Huang et al. 2024](https://doi.org/10.1093/bioinformatics/btae227)) | shares | none published | the authors' repository, at run time |
+| `sourceid_nmf` | Weighted non-negative matrix factorisation ([Huang et al. 2024](https://doi.org/10.1093/bioinformatics/btae227)) | shares | MIT | GitHub, fixed commit, fetched at run time |
 | `sourcepredict` | k-nearest neighbours on a UniFrac embedding ([Borry et al. 2019](https://doi.org/10.21105/joss.01540)) | class probabilities | GPL-3 | Bioconda |
 
 All but SourcePredict estimate the share each source contributed, plus an unknown share. SourcePredict names the most likely single environment; its numbers are probabilities (`quantity` = `probability`).
@@ -39,7 +39,7 @@ All but SourcePredict estimate the share each source contributed, plus an unknow
 MSTFlow is MIT-licensed and includes none of the methods' code:
 
 - **FEAST and FastST** are on GitHub only. They come in MSTFlow's attribution image, which carries their licence files, or, with `-profile conda`, are built from source at the same commits (`--feast_code`, `--fastst_code`, `--npreg_code`).
-- **SourceID-NMF** has no licence, so each run downloads its five Python files at a fixed commit (`--sourceid_nmf_code`). Offline, clone the repository and point the parameter at the directory.
+- **SourceID-NMF** is on GitHub only and is not packaged, so each run downloads its five Python files at a fixed commit (`--sourceid_nmf_code`). Offline, clone the repository and point the parameter at the directory.
 
 ## How a sink is called
 
