@@ -1,6 +1,7 @@
 """How MSTFlow reads --input, --sources and --panel: every problem is reported at once,
 before any task starts, and a good sheet is written out with its defaults filled in."""
 import csv
+import re
 import shutil
 import subprocess
 import tempfile
@@ -103,6 +104,29 @@ class InputTests(unittest.TestCase):
             status, output = nextflow(root, "-preview", "--input", "samples.tsv", "--attribution_method", "feast", *options)
             self.assertNotEqual(status, 0)
             self.assertIn("--attribution_method", output)
+
+    def test_help_is_printed_and_the_run_stops_cleanly(self):
+        # No sheets, database or software: the run fails if it goes on past the help.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # Colour codes, which some Nextflow versions add, are taken out before matching.
+            plain = lambda output: re.sub(r"\x1b\[[0-9;]*m", "", output)
+            status, listing = nextflow(root, "--help")
+            listing = plain(listing)
+            self.assertEqual(status, 0, listing)
+            # The groups follow the command, with no leftovers of nf-schema's own flags.
+            self.assertRegex(listing, r"Typical pipeline command:\n\n  nextflow run .*\n\nInput and output\n")
+            self.assertIn("--help <option> explains one option", listing)
+
+            status, option = nextflow(root, "--help", "sourcetracker2_draws_per_restart", "--check_software", "false")
+            option = plain(option)
+            self.assertEqual(status, 0, option)
+            # A hidden option is explained too, and the rule below starts its own line.
+            self.assertRegex(option, r"\n--sourcetracker2_draws_per_restart\n(    .*\n)*    hidden +: true\n-{54}\n")
+
+            for output in (listing, option):
+                for text in ("cannot start", "Execution cancelled", "Core Nextflow options"):
+                    self.assertNotIn(text, output)
 
     def test_a_panel_must_hold_both_tables_and_not_reuse_names(self):
         with tempfile.TemporaryDirectory() as directory:

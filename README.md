@@ -69,7 +69,7 @@ nextflow run larryivan/mstflow -profile docker \
     --host_fasta chm13v2.0.fa
 ```
 
-`--kraken2_db` takes a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2) as downloaded (`.tar.gz` or URL), and `--host_fasta` a BWA-indexed genome. Every library is classified against the one database, and SourceTracker2 estimates where each sample's microbes came from. Before anything runs, MSTFlow prints what it read: the samples, and the sources per environment and study. Without `--sources` it builds the genus tables only. `--help` lists every option.
+`--kraken2_db` takes a [prebuilt index](https://benlangmead.github.io/aws-indexes/k2) as downloaded (`.tar.gz` or URL), and `--host_fasta` a BWA-indexed genome. Every library is classified against the one database, and SourceTracker2 estimates where each sample's microbes came from. Before anything runs, MSTFlow prints what it read: the samples, and the sources per environment and study. Without `--sources` it builds the genus tables only. `--help` lists the options, and `--help <name>` explains one.
 
 **Reuse your sources.** The sources a run used are saved in `results/panel/`. Give that directory with `--panel` next time, and only the new samples are classified:
 

@@ -13,7 +13,7 @@ nextflow run larryivan/mstflow -r 0.1.0 -profile docker \
 
 - `-profile` is `docker`, `singularity`, `apptainer` or `conda` ([which one?](../README.md#quick-start)). MSTFlow checks it before starting; add `--check_software false` if only your compute nodes have it.
 - `-r 0.1.0` pins a release, `-resume` continues an interrupted run, and `-params-file params.yml` keeps options in a file ([example](../examples/params.example.yml)).
-- `--help` lists every option; [parameters](parameters.md) has the full table.
+- `--help` lists the options, `--help <name>` explains one, and `--showHidden` adds the advanced ones; [parameters](parameters.md) has the full table.
 
 ## Samples and sources
 

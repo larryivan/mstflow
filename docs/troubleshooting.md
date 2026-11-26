@@ -15,7 +15,7 @@ Relative paths are read next to the sheet, then from the launch directory. Use a
 The samples to trace and the sources are now two sheets. Move the rows with `source_sink` = `source` to a sheet given with `--sources`, rename `model_source_env` to `environment` there, and drop both columns from `--input`.
 
 **`The following invalid input values have been detected: * --…`**
-An option is misspelled or does not exist; `--help` lists them all.
+An option is misspelled or does not exist; `--help --showHidden` lists them all.
 
 **`no sample to trace is deep enough for source attribution: …`**
 Each sample is listed with the check it failed. Samples with too few classified reads cannot be attributed; `inputs/attribution_sample_qc.tsv` has the numbers.
