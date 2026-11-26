@@ -29,9 +29,10 @@ include { paramsHelp; validateParameters; paramsSummaryLog } from 'plugin/nf-sch
 workflow {
     // The help is printed here, before any check. nf-schema's automatic help, turned off in
     // nextflow.config, cancels the run, and Nextflow then ends it with exit status 1.
+    // A workflow body cannot return (Nextflow 26.10), so the run stops with exit status 0.
     if (given('help') || given('helpFull')) {
         log.info helpText()
-        return
+        exit 0
     }
 
     // Types, ranges, choices and file existence come from nextflow_schema.json.
